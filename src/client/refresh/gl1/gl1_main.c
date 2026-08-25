@@ -660,19 +660,77 @@ void
 R_SetFrustum(void)
 {
 	int i;
+	float fov_x = r_newrefdef.fov_x;
+	float fov_y = r_newrefdef.fov_y;
+
+	/*
+	 * In VR the culling frustum has to be built from the headset's field of
+	 * view, not from r_newrefdef's.
+	 *
+	 * Those come from the player state and are symmetric - 90 degrees by
+	 * default - while the projection R_SetupGL builds comes from OpenXR and is
+	 * both wider and asymmetric, since each eye sees further outwards than
+	 * inwards. Culling against the narrower symmetric frustum threw away
+	 * geometry that the projection then went on to render, so world surfaces
+	 * were missing at the edge of vision and popped in when the view turned.
+	 *
+	 * The frustum is still symmetric, built from whichever side of each axis
+	 * extends furthest. That covers slightly more than the projection needs,
+	 * which is the safe direction to be wrong in: it culls less than it could,
+	 * never more than it should.
+	 *
+	 * Team Beef left this stock. On a Quest the per-eye field of view is close
+	 * enough to 90 for the gap to stay out of sight; through VDXR it is not.
+	 */
+	if (gl_state.stereo_mode == STEREO_OPENXR)
+	{
+		const int eye = gl_state.camera_separation < 0 ? 0 : 1;
+
+		if (gl1_openxr_fov_left[eye] && gl1_openxr_fov_right[eye] &&
+			gl1_openxr_fov_up[eye] && gl1_openxr_fov_down[eye])
+		{
+			/* The cvars hold tangents of the half-angles, as R_SetupGL uses. */
+			float tan_x = fabs(gl1_openxr_fov_left[eye]->value);
+			float tan_y = fabs(gl1_openxr_fov_down[eye]->value);
+
+			if (fabs(gl1_openxr_fov_right[eye]->value) > tan_x)
+			{
+				tan_x = fabs(gl1_openxr_fov_right[eye]->value);
+			}
+
+			if (fabs(gl1_openxr_fov_up[eye]->value) > tan_y)
+			{
+				tan_y = fabs(gl1_openxr_fov_up[eye]->value);
+			}
+
+			if (tan_x > 0.0f && tan_y > 0.0f)
+			{
+				fov_x = 2.0f * (atan(tan_x) * 180.0f / M_PI);
+				fov_y = 2.0f * (atan(tan_y) * 180.0f / M_PI);
+
+				/* A couple of degrees of slack so rounding cannot clip the
+				   very edge back off again. */
+				fov_x += 2.0f;
+				fov_y += 2.0f;
+
+				if (fov_x > 175.0f) fov_x = 175.0f;
+				if (fov_y > 175.0f) fov_y = 175.0f;
+			}
+		}
+	}
 
 	/* rotate VPN right by FOV_X/2 degrees */
 	RotatePointAroundVector(frustum[0].normal, vup, vpn,
-			-(90 - r_newrefdef.fov_x / 2));
+			-(90 - fov_x / 2));
 	/* rotate VPN left by FOV_X/2 degrees */
 	RotatePointAroundVector(frustum[1].normal,
-			vup, vpn, 90 - r_newrefdef.fov_x / 2);
+			vup, vpn, 90 - fov_x / 2);
 	/* rotate VPN up by FOV_X/2 degrees */
 	RotatePointAroundVector(frustum[2].normal,
-			vright, vpn, 90 - r_newrefdef.fov_y / 2);
+			vright, vpn, 90 - fov_y / 2);
 	/* rotate VPN down by FOV_X/2 degrees */
 	RotatePointAroundVector(frustum[3].normal, vright, vpn,
-			-(90 - r_newrefdef.fov_y / 2));
+			-(90 - fov_y / 2));
 
 	for (i = 0; i < 4; i++)
 	{
