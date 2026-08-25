@@ -162,7 +162,22 @@ Qcommon_Mainloop(void)
 		}
 
 		newtime = Sys_Microseconds();
-		Qcommon_Frame(newtime - oldtime);
+
+		/*
+		 * Team Beef split Qcommon_Frame into begin/frame/end so the VR layer
+		 * can render once per eye between them, and changed the middle one's
+		 * parameter from a duration to an eye index. This loop was left calling
+		 * it the old way, passing microseconds where an eye number is expected
+		 * and skipping begin and end altogether - which is where the timing,
+		 * input and command execution all live. Android never runs this loop,
+		 * so it went unnoticed.
+		 *
+		 * Flatscreen is one eye, so the sequence is the VR one with a single
+		 * pass through the middle.
+		 */
+		Qcommon_BeginFrame(newtime - oldtime);
+		Qcommon_Frame(0);
+		Qcommon_EndFrame(newtime - oldtime);
 		oldtime = newtime;
 	}
 }

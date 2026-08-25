@@ -95,6 +95,10 @@ PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 #define GL_SRGB8_ALPHA8				0x8C43
 #endif
 
+#ifndef GL_RGBA8
+#define GL_RGBA8				0x8058
+#endif
+
 #ifndef GL_FRAMEBUFFER_SRGB
 #define GL_FRAMEBUFFER_SRGB			0x8DB9
 #endif
@@ -465,15 +469,34 @@ q2xrFramebuffer_Create(q2xrFramebuffer *fb, int width, int height)
 	gl.GenRenderbuffers(1, &fb->MsaaColour);
 	gl.BindRenderbuffer(GL_RENDERBUFFER, fb->MsaaColour);
 
+	/*
+	 * GL_RGBA8, deliberately, even though the swapchain image is sRGB.
+	 *
+	 * The engine renders with GL_FRAMEBUFFER_SRGB disabled, so it writes raw
+	 * values and expects them to land untouched - which is what happens in
+	 * their build, because the GLES implicit-resolve extension renders straight
+	 * into the swapchain texture.
+	 *
+	 * Resolving explicitly puts a blit in the path, and a blit *reads* the
+	 * source. Had this buffer been sRGB, that read would linearise every pixel,
+	 * and writing it into the sRGB destination with GL_FRAMEBUFFER_SRGB
+	 * disabled would store the linearised value raw - one uncancelled
+	 * sRGB-to-linear conversion across the whole image, which shows up as
+	 * darker, flatter, less saturated colour.
+	 *
+	 * With linear storage here the blit reads raw and writes raw, so the
+	 * pixels reach the compositor exactly as they would have from their direct
+	 * render.
+	 */
 	if (fb->Samples > 1 && gl.RenderbufferStorageMultisample)
 	{
 		gl.RenderbufferStorageMultisample(GL_RENDERBUFFER, fb->Samples,
-				GL_SRGB8_ALPHA8, width, height);
+				GL_RGBA8, width, height);
 	}
 	else
 	{
 		fb->Samples = 0;
-		gl.RenderbufferStorage(GL_RENDERBUFFER, GL_SRGB8_ALPHA8, width, height);
+		gl.RenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
 	}
 
 	gl.GenRenderbuffers(1, &fb->MsaaDepth);
@@ -1184,8 +1207,32 @@ q2xr_InitInstance(void)
 	Q2XR_CHECK_XR(xrEnumerateViewConfigurationViews(gApp.Instance, gApp.SystemId,
 			XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, NUM_EYES, &viewCount, gApp.ViewConfig));
 
-	gApp.Width = (int)(gApp.ViewConfig[0].recommendedImageRectWidth * SS_MULTIPLIER);
-	gApp.Height = (int)(gApp.ViewConfig[0].recommendedImageRectHeight * SS_MULTIPLIER);
+	/*
+	 * SS_MULTIPLIER is their fixed 1.1. A Quest has one GPU, so a constant is
+	 * reasonable there; a PC does not, and the render resolution is the main
+	 * lever on how crisp the image looks. Exposed as a cvar defaulting to their
+	 * value, so out of the box this matches their build exactly.
+	 *
+	 * Registered here rather than in VR_Init to leave their cvar list untouched.
+	 * Clamped because the eye buffers are allocated from it: two swapchains of
+	 * three images each, so the cost of a large multiplier is paid six times.
+	 */
+	{
+		cvar_t *ss = Cvar_Get("vr_supersampling", "1.1", CVAR_ARCHIVE);
+		float multiplier = ss->value;
+
+		if (multiplier < 0.5f)
+		{
+			multiplier = 0.5f;
+		}
+		else if (multiplier > 2.0f)
+		{
+			multiplier = 2.0f;
+		}
+
+		gApp.Width = (int)(gApp.ViewConfig[0].recommendedImageRectWidth * multiplier);
+		gApp.Height = (int)(gApp.ViewConfig[0].recommendedImageRectHeight * multiplier);
+	}
 
 	/*
 	 * They pin the display to 72Hz, because that is what a Quest runs at and
