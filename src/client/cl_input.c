@@ -26,6 +26,7 @@
  */
 
 #include "header/client.h"
+#include "../vr/vr_surface.h"
 #include "input/header/input.h"
 
 cvar_t *cl_nodelta;
@@ -857,11 +858,39 @@ CL_SendCmd(void)
 
 	SZ_Init(&buf, data, sizeof(data));
 
-	if (cmd->buttons && (cl.cinematictime > 0) && !cl.attractloop &&
-		(cls.realtime - cl.cinematictime > 1000))
 	{
-		/* skip the rest of the cinematic */
-		SCR_FinishCinematic();
+		/*
+		 * "Press any button to skip" - but in VR, BUTTON_ANY is not a button
+		 * anyone pressed. It comes from anykeydown, which the VR layer drives
+		 * by synthesising key events for controller buttons, so a press used
+		 * to start the game can leave it set with no matching release. The
+		 * cinematic then skips itself exactly 1000ms in, every time, which is
+		 * the reported "plays for a second or two then cuts off".
+		 *
+		 * The comment on anykeydown in cl_keyboard.c notes that intermission
+		 * handling is the only intended consumer of BUTTON_ANY, so ignoring it
+		 * here costs nothing real: a deliberate skip still works through
+		 * attack or use. Scoped to VR, so a flatscreen run keeps stock
+		 * any-key behaviour.
+		 *
+		 * Team Beef hit this too and zeroed anykeydown in Key_Init under
+		 * __ANDROID__, which only covers the startup state rather than a key
+		 * that gets stuck later.
+		 */
+		int skipButtons = cmd->buttons;
+
+		if (TBXR_IsRunning())
+		{
+			skipButtons &= ~BUTTON_ANY;
+		}
+
+		if (skipButtons && (cl.cinematictime > 0) && !cl.attractloop &&
+			(cls.realtime - cl.cinematictime > 1000))
+		{
+			Com_DPrintf("Cinematic skipped, buttons=%d\n", cmd->buttons);
+			/* skip the rest of the cinematic */
+			SCR_FinishCinematic();
+		}
 	}
 
 	/* begin a client move command */
