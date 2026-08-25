@@ -120,6 +120,31 @@ measured inside the call. **The first attempt at this broke tracking outright**
 by assuming `cl.refdef.viewangles[YAW] - hmdorientation[YAW]` equals `snapTurn`
 - see [[vr-port-verify-before-asking]].
 
+## Game data: their pak99.pak is required
+
+`Quake2Quest/assets/pak99.pak` (37MB) is part of what their build *is*, not an
+optional extra. It replaces every weapon model - both the `g_*` world models
+and the `v_*` viewmodels - with high-resolution versions carrying large TGA
+skins in place of retail's small PCX ones. Retail's `v_*` models include the
+player's arm; theirs do not.
+
+That single file accounts for two separate complaints from the first play
+session: "the weapon model is extremely low detail" and "in the standalone it
+is just the gun, no arm". No code change was involved in either.
+
+It must be named `pak99.pak`: `MAX_PAKS` is 100, so `filesystem.c` loads
+`pak0` through `pak99` by number, last one winning. That is why they chose 99.
+
+Installed into `build-mingw/release/baseq2/` rather than into the retail
+install, so the game data at `E:\Games\Quake 2` stays untouched. `*.pak` is
+gitignored - game data is never committed.
+
+## Missing music is not a bug
+
+The Steam release of Quake II ships no CD audio, and there is no `music/`
+directory in the game data, which is why the log shows `OGG_PlayTrack: out of
+range`. Music needs OGG files placed in `baseq2/music/` as `02.ogg` onwards.
+
 ## Next
 
 Systematic comparison against the standalone: options menus, weapon models,

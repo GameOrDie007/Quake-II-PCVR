@@ -4,3 +4,6 @@
 *.user
 *.d
 build-mingw/
+
+# Team Beef asset pak - game data, never commit
+*.pak
