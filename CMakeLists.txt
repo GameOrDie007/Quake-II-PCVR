@@ -645,6 +645,22 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 			${OPENXR_LOADER_LIBRARY} opengl32)
 	target_include_directories(yquake2 PRIVATE ${OPENXR_INCLUDE_DIR})
 
+	# Copy the two non-system DLLs next to the binary so the release directory
+	# runs on a machine without MSYS2 on PATH.
+	get_filename_component(_openxr_libdir ${OPENXR_LOADER_LIBRARY} DIRECTORY)
+	get_filename_component(_mingw_bindir "${_openxr_libdir}/../bin" ABSOLUTE)
+
+	# libopenxr_loader.dll is built as C++ and pulls in the MinGW runtime, so
+	# those three come along too.
+	foreach(_dll SDL2.dll libopenxr_loader.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll)
+		if(EXISTS "${_mingw_bindir}/${_dll}")
+			add_custom_command(TARGET yquake2 POST_BUILD
+				COMMAND ${CMAKE_COMMAND} -E copy_if_different
+					"${_mingw_bindir}/${_dll}"
+					"${CMAKE_BINARY_DIR}/release/${_dll}")
+		endif()
+	endforeach()
+
 	# Wrapper for the Windows binary
 	add_executable(quake2 ${Wrapper-Source})
 	set_target_properties(quake2 PROPERTIES

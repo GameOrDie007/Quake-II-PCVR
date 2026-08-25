@@ -34,7 +34,12 @@
 
 #define Q2QVERSION "1.1.1"
 #define YQ2VERSION "7.41"
-#define BASEDIRNAME "Quake2Quest"
+/* Team Beef use "Quake2Quest" here because their APK ships the game data in
+   a folder of that name. A PC install is a retail or Steam copy of Quake II,
+   where the data lives in baseq2, so the stock name is restored. This is a
+   packaging difference, not a behavioural one - with the wrong name the
+   engine finds no paks and dies loading pics/colormap.pcx. */
+#define BASEDIRNAME "baseq2"
 
 #ifndef YQ2OSTYPE
 #error YQ2OSTYPE should be defined by the build system
@@ -763,6 +768,10 @@ void Z_FreeTags(int tag);
 void Qcommon_Init(int argc, char **argv);
 void Qcommon_ExecConfigs(qboolean addEarlyCmds);
 const char* Qcommon_GetInitialGame(void);
+/* The platform layer owns the loop now: Team Beef commented out the
+   Qcommon_Mainloop call at the end of Qcommon_Init, so the backend calls
+   one or the other itself. */
+void Qcommon_Mainloop(void);
 void Qcommon_BeginFrame(int msec);
 void Qcommon_Frame(int eye);
 void Qcommon_EndFrame(int msec);

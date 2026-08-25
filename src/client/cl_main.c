@@ -890,7 +890,17 @@ CL_Init(void)
 
 	VID_Init();
 
-	//IN_Init();
+	/*
+	 * Team Beef comment this out because a Quest has no keyboard or mouse and
+	 * their VR layer supplies all input. On PC both exist and are needed - for
+	 * the menus, the console, and the flatscreen fallback - so it is restored.
+	 *
+	 * It is not optional: CL_BeginFrame calls IN_Update every frame regardless,
+	 * and IN_Update dereferences in_grab, which only IN_Init registers. Without
+	 * this the client segfaults on its first frame, after the SDL event loop
+	 * drains, on the very first read of in_grab->value.
+	 */
+	IN_Init();
 
 	V_Init();
 

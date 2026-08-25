@@ -213,6 +213,7 @@ static XrPosef q2xrHeadPoseStage;
 static qboolean q2xrWasUsingScreenLayer = false;
 static XrPosef q2xrScreenLayerPose;
 static qboolean q2xrInitialised = false;
+static qboolean q2xrInstanceReady = false;
 
 static XrActionSet actionSet = XR_NULL_HANDLE;
 static XrAction gripPoseAction = XR_NULL_HANDLE;
@@ -1030,8 +1031,24 @@ q2xr_GetGraphicsBinding(XrGraphicsBindingOpenGLWin32KHR *binding)
 	return true;
 }
 
+/*
+ * Bring-up is split in two on PC, which is the one structural change to their
+ * ordering. Theirs runs as: create the EGL context, initialise all of OpenXR,
+ * then Qcommon_Init. That works because on Android the context exists before
+ * the engine starts and the surface is sized from Quest_GetScreenRes.
+ *
+ * On PC the GL context is created by the engine, inside Qcommon_Init, so the
+ * session cannot exist beforehand. But the engine also needs the eye
+ * resolution while it is starting up, because VID_GetModeInfo returns the
+ * "desktop" mode and their change makes that the eye buffer size.
+ *
+ * The split resolves the circularity along the line OpenXR already draws:
+ * instance, system and view configuration need no graphics binding, while
+ * session, swapchains and actions do. Phase one runs before Qcommon_Init and
+ * yields the eye size; phase two runs once the context exists.
+ */
 static qboolean
-q2xr_InitOpenXR(void)
+q2xr_InitInstance(void)
 {
 	uint32_t availableCount = 0;
 	XrExtensionProperties *available = NULL;
@@ -1041,14 +1058,10 @@ q2xr_InitOpenXR(void)
 	XrInstanceCreateInfo createInfo;
 	XrInstanceProperties props = {XR_TYPE_INSTANCE_PROPERTIES};
 	XrSystemGetInfo systemInfo = {XR_TYPE_SYSTEM_GET_INFO};
-	XrGraphicsBindingOpenGLWin32KHR graphicsBinding;
-	XrSessionCreateInfo sessionInfo = {XR_TYPE_SESSION_CREATE_INFO};
-	XrReferenceSpaceCreateInfo spaceInfo = {XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
 	PFN_xrGetOpenGLGraphicsRequirementsKHR getGlRequirements = NULL;
 	XrResult result;
 	uint32_t viewCount = 0;
 	uint32_t i;
-	int eye;
 
 	/*
 	 * No loader init here. Theirs passes the JavaVM and activity through
@@ -1189,6 +1202,18 @@ q2xr_InitOpenXR(void)
 			gApp.Width, gApp.Height,
 			gApp.ViewConfig[0].recommendedImageRectWidth,
 			gApp.ViewConfig[0].recommendedImageRectHeight);
+
+	return true;
+}
+
+static qboolean
+q2xr_InitSession(void)
+{
+	XrGraphicsBindingOpenGLWin32KHR graphicsBinding;
+	XrSessionCreateInfo sessionInfo = {XR_TYPE_SESSION_CREATE_INFO};
+	XrReferenceSpaceCreateInfo spaceInfo = {XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
+	XrResult result;
+	int eye;
 
 	if (!q2xr_GetGraphicsBinding(&graphicsBinding))
 	{
@@ -1864,39 +1889,86 @@ VR_GetMove(float *forward, float *side, float *up, float *yaw, float *pitch, flo
 /* ------------------------------------------------------------------------- */
 
 /*
- * Called once the window and GL context exist. Their equivalent work happens
- * on the Android app thread between onSurfaceCreated and the render loop.
+ * Phase one: before Qcommon_Init. Creates the instance and reads the view
+ * configuration, which is what makes the eye resolution available to the
+ * engine while it is still starting up. Needs no GL context.
+ *
+ * Failure here is not fatal - it means no headset or no runtime, and the
+ * engine carries on as an ordinary flatscreen build.
  */
 qboolean
-TBXR_InitialiseOpenXR(void)
+TBXR_InitialiseInstance(void)
+{
+	if (q2xrInstanceReady)
+	{
+		return true;
+	}
+
+	if (!q2xr_InitInstance())
+	{
+		Com_Printf("VR: no OpenXR instance - continuing without VR\n");
+		return false;
+	}
+
+	q2xrInstanceReady = true;
+	return true;
+}
+
+/*
+ * Phase two: after Qcommon_Init, once the window and GL context exist. This is
+ * the point their Android build reaches between onSurfaceCreated and the
+ * render loop.
+ */
+qboolean
+TBXR_InitialiseSession(void)
 {
 	if (q2xrInitialised)
 	{
 		return true;
 	}
 
-	if (!q2xr_InitOpenXR())
+	if (!q2xrInstanceReady)
 	{
-		Com_Printf("VR: OpenXR initialisation failed\n");
+		return false;
+	}
+
+	if (!q2xr_InitSession())
+	{
+		Com_Printf("VR: OpenXR session creation failed\n");
 		q2xr_DestroyOpenXR();
+		q2xrInstanceReady = false;
 		return false;
 	}
 
 	q2xrInitialised = true;
 	oldtime = Sys_Milliseconds();
+	Com_Printf("VR: ready\n");
 	return true;
+}
+
+/*
+ * The eye buffer size, for VID_GetModeInfo. Valid as soon as phase one has
+ * run; zero before that, which tells the caller to fall back to the desktop
+ * resolution.
+ */
+void
+TBXR_GetEyeResolution(int *width, int *height)
+{
+	*width = gApp.Width;
+	*height = gApp.Height;
 }
 
 void
 TBXR_ShutdownOpenXR(void)
 {
-	if (!q2xrInitialised)
+	if (!q2xrInitialised && !q2xrInstanceReady)
 	{
 		return;
 	}
 
 	q2xr_DestroyOpenXR();
 	q2xrInitialised = false;
+	q2xrInstanceReady = false;
 }
 
 qboolean

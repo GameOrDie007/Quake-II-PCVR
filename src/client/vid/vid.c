@@ -519,7 +519,9 @@ VID_Init(void)
 	// Console variables
 	vid_gamma = Cvar_Get("vid_gamma", "1.0", CVAR_ARCHIVE);
 	vid_fullscreen = Cvar_Get("vid_fullscreen", "0", CVAR_ARCHIVE);
-	vid_renderer = Cvar_Get("vid_renderer", "gl3", CVAR_ARCHIVE);
+	/* gl1, not gl3. Team Beef's VR work is in gl1 and their gl3 is not built
+	   here, so defaulting to gl3 only produced a failed load and a fallback. */
+	vid_renderer = Cvar_Get("vid_renderer", "gl1", CVAR_ARCHIVE);
 
 	// Commands
 	Cmd_AddCommand("vid_restart", VID_Restart_f);

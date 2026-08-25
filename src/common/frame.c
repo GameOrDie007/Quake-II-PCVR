@@ -25,6 +25,9 @@
  */
 
 #include "header/common.h"
+#ifndef DEDICATED_ONLY
+#include "../vr/vr_surface.h"
+#endif
 #include "header/zone.h"
 #include <setjmp.h>
 
@@ -338,6 +341,19 @@ Qcommon_Init(int argc, char **argv)
 	VR_Init();
 
 #ifndef DEDICATED_ONLY
+	/*
+	 * Create the OpenXR instance before the client starts, because CL_Init
+	 * brings up video and their change to VID_GetModeInfo makes the video mode
+	 * the eye buffer size, which is only known once the view configuration has
+	 * been read. No GL context is needed for that, and none exists yet.
+	 *
+	 * It has to be here rather than in the backend's main(): this is after
+	 * Cvar_Init and the filesystem, so Com_Printf works and failures are
+	 * visible. A false return just means no runtime or no headset, and the
+	 * client then starts flatscreen.
+	 */
+	TBXR_InitialiseInstance();
+
 	CL_Init();
 #endif
 
