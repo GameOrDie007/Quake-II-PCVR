@@ -58,10 +58,17 @@ encode and decode. Try VD's own colour settings before touching render code.
 
 Two tags, two packaged folders, both self-contained and portable:
 
-| tag | package | what it is |
-|---|---|---|
-| `quake2-vr-1to1` | `E:\Games\Quake II VR (1to1)` | their game on PC, nothing added |
-| `quake2-vr-pc` | `E:\Games\Quake II VR (PC)` | the above plus a PC Options screen and the frustum fix |
+| tag | branch | package | what it is |
+|---|---|---|---|
+| `quake2-vr-1to1-r2` | `vr-1to1` | `E:\Games\Quake II VR (1to1)` | their game on PC, nothing added |
+| `quake2-vr-pc` | `vr-741-base` | `E:\Games\Quake II VR (PC)` | the above plus a PC Options screen |
+
+`quake2-vr-1to1` is the original tag, kept for history. `-r2` supersedes it: it
+is the same build with the `R_SetFrustum` fix, which is a platform correctness
+fix rather than a feature. Both packaged folders now carry it.
+
+The `vr-1to1` branch exists so future platform fixes can land in the 1:1 build
+without dragging the PC options along - cherry-pick onto it and repackage.
 
 `tools/package-release.sh <dir>` builds either. The launcher passes
 `-portable`, so config, saves and screenshots live inside the folder: backing
@@ -90,10 +97,10 @@ world geometry went missing at the edge of vision and popped in when turning.
 Team Beef left it stock and it does not show on a Quest, where the per-eye FOV
 is close to 90; through VDXR it does.
 
-It landed after the `quake2-vr-1to1` tag, so **the packaged 1:1 folder does not
-have it**. It is a platform correctness fix rather than a feature, so it
-arguably belongs there too - repackaging that folder from a branch carrying
-just this fix is a one-command job if wanted.
+It landed after the original `quake2-vr-1to1` tag, and has since been
+cherry-picked onto the `vr-1to1` branch and tagged `quake2-vr-1to1-r2`, so both
+packaged folders now have it. Without it the 1:1 build carried a visual defect
+the standalone does not have, which is the opposite of the point.
 
 ## Next: render resolution
 (`vr_supersampling` already exists), MSAA level (their `NUM_MULTI_SAMPLES` is a
