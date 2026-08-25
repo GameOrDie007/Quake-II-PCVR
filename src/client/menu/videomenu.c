@@ -28,6 +28,7 @@
 #include "../../client/header/client.h"
 #include "../../client/menu/header/qmenu.h"
 #include "../../vr/teambeef/VrCvars.h"
+#include "../../vr/vr_surface.h"
 
 extern void M_ForceMenuOff(void);
 
@@ -523,7 +524,21 @@ VID_MenuInit(void)
 	Menu_AddItem(&s_opengl_menu, (void *)&s_fs_box);
 	Menu_AddItem(&s_opengl_menu, (void *)&s_vsync_list);
 	Menu_AddItem(&s_opengl_menu, (void *)&s_af_list);
-	Menu_AddItem(&s_opengl_menu, (void *)&s_msaa_list);
+	/*
+	 * Not offered in VR. Changing it triggers a vid_restart, which destroys the
+	 * GL context the OpenXR session is bound to and leaves the game running but
+	 * unplayable. It would also do nothing useful: the eye framebuffers do their
+	 * own multisampling with NUM_MULTI_SAMPLES, while gl_msaa_samples applies to
+	 * the desktop window, which nothing is rendered to in VR.
+	 *
+	 * Team Beef removed the resolution list from this menu for the same
+	 * underlying reason - the video mode is not the user's to choose once a
+	 * headset is driving it.
+	 */
+	if (!TBXR_IsRunning())
+	{
+		Menu_AddItem(&s_opengl_menu, (void *)&s_msaa_list);
+	}
 	Menu_AddItem(&s_opengl_menu, (void *)&s_defaults_action);
 	Menu_AddItem(&s_opengl_menu, (void *)&s_apply_action);
 
