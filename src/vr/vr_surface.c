@@ -388,7 +388,33 @@ q2xrFramebuffer_Create(q2xrFramebuffer *fb, int width, int height)
 
 	fb->Width = width;
 	fb->Height = height;
-	fb->Samples = (NUM_MULTI_SAMPLES > 1) ? NUM_MULTI_SAMPLES : 0;
+
+	/*
+	 * PC option. NUM_MULTI_SAMPLES is their fixed 2, which is a sensible
+	 * constant for a Quest: multisampling is nearly free on a tile-based
+	 * mobile GPU, and there is only one GPU to tune for. A desktop card has
+	 * headroom for more, and the cost is real rather than nearly free, so it
+	 * is worth choosing. Defaults to their 2, so an untouched install renders
+	 * exactly as their build does.
+	 *
+	 * Clamped to values GL is required to support, and applied when the buffer
+	 * is created - changing it needs a restart.
+	 */
+	{
+		cvar_t *msaa = Cvar_Get("vr_msaa", "2", CVAR_ARCHIVE);
+		int samples = (int)msaa->value;
+
+		if (samples < 1)
+		{
+			samples = 1;
+		}
+		else if (samples > 8)
+		{
+			samples = 8;
+		}
+
+		fb->Samples = (samples > 1) ? samples : 0;
+	}
 
 	memset(&sci, 0, sizeof(sci));
 	sci.type = XR_TYPE_SWAPCHAIN_CREATE_INFO;

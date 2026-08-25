@@ -58,6 +58,7 @@ static void M_Menu_StartServer_f(void);
 static void M_Menu_DMOptions_f(void);
 static void M_Menu_Video_f(void);
 static void M_Menu_Options_f(void);
+static void M_Menu_PCOptions_f(void);
 static void M_Menu_Keys_f(void);
 static void M_Menu_Quit_f(void);
 static void M_Menu_Cheats_f(void);
@@ -1101,6 +1102,24 @@ static menulist_s s_options_enable_item_wheels;
 static menulist_s s_options_enable_smoothturn;
 static menulist_s s_options_enable_cheats;
 
+/*
+ * PC options.
+ *
+ * Deliberately a separate screen rather than additions to the VR options
+ * above. Everything on that screen is Team Beef's, at their defaults, and
+ * keeping it untouched means the 1:1 build stays reachable by simply not
+ * coming in here.
+ *
+ * These exist because a Quest is one fixed GPU and a PC is not. Each defaults
+ * to the value their build uses, so an untouched install renders exactly as
+ * the standalone does.
+ */
+static menuframework_s s_pcoptions_menu;
+static menuslider_s s_pcoptions_supersampling_slider;
+static menulist_s s_pcoptions_msaa_box;
+static menulist_s s_pcoptions_farsee_box;
+static menulist_s s_pcoptions_action;
+
 static void
 CrosshairFunc(void *unused)
 {
@@ -1614,6 +1633,14 @@ Options_MenuInit(void)
     s_options_defaults_action.generic.name = "reset defaults";
     s_options_defaults_action.generic.callback = ControlsResetDefaultsFunc;
 
+    /* PC options live on their own screen so the VR options above stay
+       exactly as Team Beef arranged them. */
+    s_pcoptions_action.generic.type = MTYPE_ACTION;
+    s_pcoptions_action.generic.x = 0;
+    s_pcoptions_action.generic.y = 170;
+    s_pcoptions_action.generic.name = "pc options";
+    s_pcoptions_action.generic.callback = (void (*)(void *))M_Menu_PCOptions_f;
+
     s_options_console_action.generic.type = MTYPE_ACTION;
     s_options_console_action.generic.x = 0;
     s_options_console_action.generic.y = 180;
@@ -1650,6 +1677,7 @@ Options_MenuInit(void)
     Menu_AddItem(&s_options_menu, (void *)&s_options_enable_cheats);
     Menu_AddItem(&s_options_menu, (void *)&s_options_vr_jumpsound_box);
 //    Menu_AddItem(&s_options_menu, (void *)&s_options_customize_options_action);
+    Menu_AddItem(&s_options_menu, (void *)&s_pcoptions_action);
     Menu_AddItem(&s_options_menu, (void *)&s_options_defaults_action);
     Menu_AddItem(&s_options_menu, (void *)&s_options_console_action);
 }
@@ -1679,6 +1707,113 @@ M_Menu_Options_f(void)
 {
     Options_MenuInit();
     M_PushMenu(Options_MenuDraw, Options_MenuKey);
+}
+
+/* ------------------------------------------------------------------------ */
+/* PC options                                                                */
+/* ------------------------------------------------------------------------ */
+
+static const char *msaa_names[] = {"off", "2x", "4x", "8x", 0};
+/* Theirs is a local inside Options_MenuInit; a copy avoids touching it. */
+static const char *pc_yesno_names[] = {"no", "yes", 0};
+
+/* Slider runs 5..20, giving 0.5 to 2.0 in tenths. Their build is 1.1. */
+static void
+SupersamplingFunc(void *unused)
+{
+    Cvar_SetValue("vr_supersampling", s_pcoptions_supersampling_slider.curvalue / 10.0f);
+}
+
+static void
+MsaaFunc(void *unused)
+{
+    static const int samples[] = {1, 2, 4, 8};
+
+    Cvar_SetValue("vr_msaa", (float)samples[s_pcoptions_msaa_box.curvalue]);
+}
+
+static void
+FarseeFunc(void *unused)
+{
+    Cvar_SetValue("r_farsee", (float)s_pcoptions_farsee_box.curvalue);
+}
+
+static void
+PCOptions_MenuInit(void)
+{
+    float scale = SCR_GetMenuScale();
+    cvar_t *ss = Cvar_Get("vr_supersampling", "1.1", CVAR_ARCHIVE);
+    cvar_t *msaa = Cvar_Get("vr_msaa", "2", CVAR_ARCHIVE);
+    cvar_t *farsee = Cvar_Get("r_farsee", "0", CVAR_ARCHIVE);
+    int y = 0;
+
+    s_pcoptions_menu.x = viddef.width / 2;
+    s_pcoptions_menu.y = viddef.height / (2 * scale) - 58;
+    s_pcoptions_menu.nitems = 0;
+
+    s_pcoptions_supersampling_slider.generic.type = MTYPE_SLIDER;
+    s_pcoptions_supersampling_slider.generic.x = 0;
+    s_pcoptions_supersampling_slider.generic.y = (y = 0);
+    s_pcoptions_supersampling_slider.generic.name = "render resolution";
+    s_pcoptions_supersampling_slider.generic.callback = SupersamplingFunc;
+    s_pcoptions_supersampling_slider.minvalue = 5;
+    s_pcoptions_supersampling_slider.maxvalue = 20;
+    s_pcoptions_supersampling_slider.curvalue = ss->value * 10;
+
+    s_pcoptions_msaa_box.generic.type = MTYPE_SPINCONTROL;
+    s_pcoptions_msaa_box.generic.x = 0;
+    s_pcoptions_msaa_box.generic.y = (y += 20);
+    s_pcoptions_msaa_box.generic.name = "antialiasing";
+    s_pcoptions_msaa_box.generic.callback = MsaaFunc;
+    s_pcoptions_msaa_box.itemnames = msaa_names;
+
+    if (msaa->value >= 8) s_pcoptions_msaa_box.curvalue = 3;
+    else if (msaa->value >= 4) s_pcoptions_msaa_box.curvalue = 2;
+    else if (msaa->value >= 2) s_pcoptions_msaa_box.curvalue = 1;
+    else s_pcoptions_msaa_box.curvalue = 0;
+
+    s_pcoptions_farsee_box.generic.type = MTYPE_SPINCONTROL;
+    s_pcoptions_farsee_box.generic.x = 0;
+    s_pcoptions_farsee_box.generic.y = (y += 10);
+    s_pcoptions_farsee_box.generic.name = "extended view distance";
+    s_pcoptions_farsee_box.generic.callback = FarseeFunc;
+    s_pcoptions_farsee_box.itemnames = pc_yesno_names;
+    s_pcoptions_farsee_box.curvalue = (farsee->value != 0);
+
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_supersampling_slider);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_msaa_box);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_farsee_box);
+}
+
+static void
+PCOptions_MenuDraw(void)
+{
+    float scale = SCR_GetMenuScale();
+
+    Menu_AdjustCursor(&s_pcoptions_menu, 1);
+    Menu_Draw(&s_pcoptions_menu);
+
+    /* Both buffer settings are fixed when the eye framebuffers are created,
+       so say so rather than letting them look broken until a restart. */
+    M_Print(s_pcoptions_menu.x - 160 * scale,
+            (s_pcoptions_menu.y + 70) * scale,
+            "resolution and antialiasing");
+    M_Print(s_pcoptions_menu.x - 160 * scale,
+            (s_pcoptions_menu.y + 80) * scale,
+            "apply on restart");
+}
+
+static const char *
+PCOptions_MenuKey(int key)
+{
+    return Default_MenuKey(&s_pcoptions_menu, key);
+}
+
+static void
+M_Menu_PCOptions_f(void)
+{
+    PCOptions_MenuInit();
+    M_PushMenu(PCOptions_MenuDraw, PCOptions_MenuKey);
 }
 
 /*
