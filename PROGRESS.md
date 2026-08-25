@@ -173,6 +173,39 @@ The Steam release of Quake II ships no CD audio, and there is no `music/`
 directory in the game data, which is why the log shows `OGG_PlayTrack: out of
 range`. Music needs OGG files placed in `baseq2/music/` as `02.ogg` onwards.
 
+## Open: the standalone renders darker, and it is probably not our code
+
+Established, not assumed:
+
+- **Engine-side brightness is identical.** `gammatable[i] = i` in
+  `R_InitImages` - identity, and that is stock 7.41, not a Team Beef change -
+  so `vid_gamma` affects nothing anywhere in the texture path in either build.
+  `intensitytable[i] = i * 3.7` in both, confirmed by instrumenting `hmdType`
+  (1 = META) and the intensity value (3.70).
+- **Every lighting cvar matches.** A full diff of their shipped `config.cfg`
+  against ours shows no difference in `gl1_overbrightbits`, `r_modulate`,
+  `vid_gamma` or `gl1_intensity`.
+- **Lightmap brightness is ruled out.** The brightness slider computes
+  `(curvalue / 7) + 1`, so its floor is ~1.14, while their config runs
+  `gl1_overbrightbits 0` - below the slider's range, and gl1 quantises both to
+  the same 1x scale. The standalone is darker than this port at its darkest
+  possible lightmap setting.
+- **Two changes to the sRGB resolve produced no visible difference at all**,
+  in either direction. That strongly suggests the driver treats the
+  sRGB-to-sRGB blit as a straight copy and no conversion happens, making
+  `vr_srgb` inert on this hardware.
+
+What is left is the difference the port cannot remove: the standalone renders
+natively on the headset, while this build renders on the PC and reaches the
+same headset through Virtual Desktop's encode, stream and decode. That path
+does its own colour handling and has its own brightness controls. It is the
+one part of the comparison that is not the same pipeline.
+
+Before writing more code here, the thing to try is Virtual Desktop's own
+brightness/colour settings. If a real darkening control inside the game is
+wanted regardless of cause, that is a PC addition rather than a port fix -
+their build has no such control because gamma is disabled on their side too.
+
 ## Next
 
 Systematic comparison against the standalone: options menus, weapon models,
