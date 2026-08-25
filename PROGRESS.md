@@ -120,7 +120,35 @@ measured inside the call. **The first attempt at this broke tracking outright**
 by assuming `cl.refdef.viewangles[YAW] - hmdorientation[YAW]` equals `snapTurn`
 - see [[vr-port-verify-before-asking]].
 
-## Game data: their pak99.pak is required
+## Game data: their shipped standalone, not just their repo
+
+**None of this is in their git repo.** The repo's `pak0.pak` is only the
+shareware pak. Miles's installed standalone is at
+`E:\Games\Quest Ports\Quake2Quest`, and `Q2VR_GAMEDATA` in CMakeLists points
+there; the assets are copied on every build so wiping the build directory
+cannot quietly drop them.
+
+- **`pak6.pak`** - 147MB, 2,191 HD world textures (TGA/JPG/PNG at up to 787KB
+  against retail's small 8-bit `.wal`). **Inert unless `gl_retexturing` is 1**,
+  which their config sets and stock does not. This, not renderer colour
+  handling, is why the world looked like low detail settings.
+- **`pak99.pak`** - HD weapon models. Their `v_*` viewmodels carry no arm,
+  which is why the standalone shows just the gun.
+- **`autoexec.cfg`** - `vr_weapon_adjustment` for all eleven weapons, commented
+  "the default for the HD weapon models": the alignment they tuned *assumes*
+  pak99.
+- **`music/`** (Steam ships no CD audio), **`vignette.tga`**, **`wheel/`**.
+
+Their `config.cfg` is ground truth for every cvar and settles what source
+reading cannot. Differences that mattered: `gl_retexturing 1`,
+`gl_texturemode GL_LINEAR_MIPMAP_LINEAR` rather than the stock nearest-mipmap
+default, and `gl_shadows`/`gl1_stencilshadow` both on.
+
+Diffing their `vr_*` cvar list against ours returns **nothing missing** - their
+shipped build registers exactly the VR cvars this port does, so the options
+menu is complete.
+
+## Superseded note: pak99 alone
 
 `Quake2Quest/assets/pak99.pak` (37MB) is part of what their build *is*, not an
 optional extra. It replaces every weapon model - both the `g_*` world models
