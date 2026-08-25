@@ -32,7 +32,6 @@ cvar_t *developer;
 cvar_t *modder;
 cvar_t *timescale;
 cvar_t *fixedtime;
-cvar_t *cl_maxfps;
 cvar_t *dedicated;
 cvar_t *busywait;
 
@@ -196,7 +195,7 @@ static qboolean checkForHelp(int argc, char **argv)
 				printf("Most interesting commandline arguments:\n");
 				printf("-h or --help: Show this help\n");
 				printf("-datadir <path>\n");
-				printf("  set path to your Quake2 game data (the directory baseq2/ is in)\n");
+				printf("  set path to your Quake2 game data (the directory Quake2Quest/ is in)\n");
 				printf("-portable\n");
 				printf("  Write (savegames, configs, ...) in the binary directory\n");
 				printf("+exec <config>\n");
@@ -301,8 +300,6 @@ Qcommon_Init(int argc, char **argv)
 
 	// cvars
 
-	cl_maxfps = Cvar_Get("cl_maxfps", "60", CVAR_ARCHIVE);
-
 	developer = Cvar_Get("developer", "0", 0);
 	fixedtime = Cvar_Get("fixedtime", "0", 0);
 
@@ -338,6 +335,8 @@ Qcommon_Init(int argc, char **argv)
 	NET_Init();
 	Netchan_Init();
 	SV_Init();
+	VR_Init();
+
 #ifndef DEDICATED_ONLY
 	CL_Init();
 #endif
@@ -371,20 +370,45 @@ Qcommon_Init(int argc, char **argv)
 	Com_Printf("*************************************\n\n");
 
 	// Call the main loop
-	Qcommon_Mainloop();
+	//Qcommon_Mainloop();
 }
 
 #ifndef DEDICATED_ONLY
+
+// Statistics.
+static int time_before = 0;
+static int time_between = 0;
+static int time_after;
+/* A rendererframe runs the renderer, but not the
+   client or the server. The minimal interval is
+   about 1000 microseconds. */
+static qboolean renderframe = true;
+// Time since last packetframe in microsec.
+static int packetdelta = 1000000;
+
+// Time since last renderframe in microsec.
+static int renderdelta = 1000000;
+
+// Accumulated time since last client run.
+static int clienttimedelta = 0;
+
+// Accumulated time since last server run.
+static int servertimedelta = 0;
+
+/* A packetframe runs the server and the client,
+   but not the renderer. The minimal interval of
+   packetframes is about 10.000 microsec. If run
+   more often the movement prediction in pmove.c
+   breaks. That's the Q2 variant if the famous
+   125hz bug. */
+static qboolean packetframe = true;
+
 void
-Qcommon_Frame(int usec)
+Qcommon_BeginFrame(int usec)
 {
 	// Used for the dedicated server console.
 	char *s;
 
-	// Statistics.
-	int time_before = 0;
-	int time_between = 0;
-	int time_after;
 
 	// Target packetframerate.
 	int pfps;
@@ -392,31 +416,9 @@ Qcommon_Frame(int usec)
 	//Target renderframerate.
 	int rfps;
 
-	// Time since last packetframe in microsec.
-	static int packetdelta = 1000000;
-
-	// Time since last renderframe in microsec.
-	static int renderdelta = 1000000;
-
-	// Accumulated time since last client run.
-	static int clienttimedelta = 0;
-
-	// Accumulated time since last server run.
-	static int servertimedelta = 0;
-
-	/* A packetframe runs the server and the client,
-	   but not the renderer. The minimal interval of
-	   packetframes is about 10.000 microsec. If run
-	   more often the movement prediction in pmove.c
-	   breaks. That's the Q2 variant if the famous
-	   125hz bug. */
-	qboolean packetframe = true;
-
-	/* A rendererframe runs the renderer, but not the
-	   client or the server. The minimal interval is
-	   about 1000 microseconds. */
-	qboolean renderframe = true;
-
+    //reset
+    renderframe = true;
+    packetframe = true;
 
 	/* Tells the client to shutdown.
 	   Used by the signal handlers. */
@@ -497,16 +499,6 @@ Qcommon_Frame(int usec)
 		Cvar_SetValue("vid_maxfps", 999);
 	}
 
-	if (cl_maxfps->value > 250)
-	{
-		Cvar_SetValue("cl_maxfps", 250);
-	}
-	else if (cl_maxfps->value < 1)
-	{
-		Cvar_SetValue("cl_maxfps", 60);
-	}
-
-
 	// Save global time for network- und input code.
 	curtime = Sys_Milliseconds();
 
@@ -530,7 +522,8 @@ Qcommon_Frame(int usec)
 	   scene may be more complex then the previous one and SDL
 	   may give us a 1 or 2 frames too low display refresh rate.
 	   Add a security magin of 5%, e.g. 60fps * 0.95 = 57fps. */
-	pfps = (cl_maxfps->value > (rfps * 0.95)) ? floor(rfps * 0.95) : cl_maxfps->value;
+	//pfps = (cl_maxfps->value > (rfps * 0.95)) ? floor(rfps * 0.95) : cl_maxfps->value;
+	pfps = rfps; // Just use exact same as render fps
 
 
 	// Calculate timings.
@@ -620,10 +613,18 @@ Qcommon_Frame(int usec)
 
 	// Run the client frame.
 	if (packetframe || renderframe) {
-		CL_Frame(packetdelta, renderdelta, clienttimedelta, packetframe, renderframe);
+		CL_BeginFrame(packetdelta, renderdelta, clienttimedelta, packetframe, renderframe);
 		clienttimedelta = 0;
 	}
+}
 
+void Qcommon_Frame (int eye) {
+	CL_Frame(eye, renderframe);
+}
+
+void Qcommon_EndFrame (int msec)
+{
+	CL_EndFrame(msec, renderframe);
 
 	if (host_speeds->value)
 	{

@@ -27,7 +27,7 @@
 
 #include "../../client/header/client.h"
 #include "../../client/menu/header/qmenu.h"
-#include "header/qmenu.h"
+#include "../../../../Quake2VR/VrCvars.h"
 
 extern void M_ForceMenuOff(void);
 
@@ -36,7 +36,6 @@ static cvar_t *r_hudscale;
 static cvar_t *r_consolescale;
 static cvar_t *r_menuscale;
 static cvar_t *crosshair_scale;
-static cvar_t *fov;
 extern cvar_t *scr_viewsize;
 extern cvar_t *vid_gamma;
 extern cvar_t *vid_fullscreen;
@@ -47,11 +46,10 @@ static cvar_t *gl_msaa_samples;
 
 static menuframework_s s_opengl_menu;
 
-static menulist_s s_renderer_list;
-static menulist_s s_mode_list;
+//static menulist_s s_renderer_list;
+//static menulist_s s_mode_list;
 static menulist_s s_uiscale_list;
 static menuslider_s s_brightness_slider;
-static menuslider_s s_fov_slider;
 static menulist_s s_fs_box;
 static menulist_s s_vsync_list;
 static menulist_s s_af_list;
@@ -104,19 +102,26 @@ GetCustomValue(menulist_s *list)
 	return i;
 }
 
+#ifdef __ANDROID__
+extern int yquake2Renderer;
+#endif
+
 static void
 BrightnessCallback(void *s)
 {
 	menuslider_s *slider = (menuslider_s *)s;
 
+#ifdef __ANDROID__
+    if( yquake2Renderer == 1 ) // GLES1 use overbright for brightness
+    {
+        float overbright =  (slider->curvalue / 7.f) + 1;
+        Cvar_SetValue("gl1_overbrightbits", overbright);
+        return;
+    }
+#endif
+
 	float gamma = slider->curvalue / 10.0;
 	Cvar_SetValue("vid_gamma", gamma);
-}
-
-static void
-FOVCallback(void *s) {
-	menuslider_s *slider = (menuslider_s *)s;
-	Cvar_SetValue("fov", slider->curvalue);
 }
 
 static void
@@ -148,12 +153,9 @@ ApplyChanges(void *unused)
 {
 	qboolean restart = false;
 
-	/* Renderer */
+	/*
 	if (s_renderer_list.curvalue != GetRenderer())
 	{
-		/*  First element in array is 'OpenGL 1.4' aka gl1.
-			Second element in array is 'OpenGL 3.2' aka gl3.
-			Third element in array is unknown renderer. */
 		if (s_renderer_list.curvalue == 0)
 		{
 			Cvar_Set("vid_renderer", "gl1");
@@ -171,24 +173,21 @@ ApplyChanges(void *unused)
 		}
 	}
 
-	/* auto mode */
 	if (!strcmp(s_mode_list.itemnames[s_mode_list.curvalue],
 		AUTO_MODE_NAME))
 	{
-		/* Restarts automatically */
 		Cvar_SetValue("r_mode", -2);
 	}
 	else if (!strcmp(s_mode_list.itemnames[s_mode_list.curvalue],
 		CUSTOM_MODE_NAME))
 	{
-		/* Restarts automatically */
 		Cvar_SetValue("r_mode", -1);
 	}
 	else
 	{
-		/* Restarts automatically */
 		Cvar_SetValue("r_mode", s_mode_list.curvalue);
 	}
+*/
 
 	/* UI scaling */
 	if (s_uiscale_list.curvalue == 0)
@@ -353,11 +352,6 @@ VID_MenuInit(void)
 		crosshair_scale = Cvar_Get("crosshair_scale", "-1", CVAR_ARCHIVE);
 	}
 
-	if (!fov)
-	{
-		fov = Cvar_Get("fov", "90",  CVAR_USERINFO | CVAR_ARCHIVE);
-	}
-
 	if (!vid_gamma)
 	{
 		vid_gamma = Cvar_Get("vid_gamma", "1.2", CVAR_ARCHIVE);
@@ -375,7 +369,7 @@ VID_MenuInit(void)
 
 	if (!gl_anisotropic)
 	{
-		gl_anisotropic = Cvar_Get("gl_anisotropic", "0", CVAR_ARCHIVE);
+		gl_anisotropic = Cvar_Get("gl_anisotropic", "4", CVAR_ARCHIVE);
 	}
 
 	if (!gl_msaa_samples)
@@ -386,7 +380,7 @@ VID_MenuInit(void)
 	s_opengl_menu.x = viddef.width * 0.50;
 	s_opengl_menu.nitems = 0;
 
-	s_renderer_list.generic.type = MTYPE_SPINCONTROL;
+/*	s_renderer_list.generic.type = MTYPE_SPINCONTROL;
 	s_renderer_list.generic.name = "renderer";
 	s_renderer_list.generic.x = 0;
 	s_renderer_list.generic.y = (y = 0);
@@ -398,6 +392,7 @@ VID_MenuInit(void)
 	s_mode_list.generic.x = 0;
 	s_mode_list.generic.y = (y += 10);
 	s_mode_list.itemnames = resolutions;
+
 
 	if (r_mode->value >= 0)
 	{
@@ -413,24 +408,28 @@ VID_MenuInit(void)
 		// 'custom'
 		s_mode_list.curvalue = GetCustomValue(&s_mode_list);
 	}
+*/
 
 	s_brightness_slider.generic.type = MTYPE_SLIDER;
 	s_brightness_slider.generic.name = "brightness";
 	s_brightness_slider.generic.x = 0;
-	s_brightness_slider.generic.y = (y += 20);
+	s_brightness_slider.generic.y = (y = 0);
 	s_brightness_slider.generic.callback = BrightnessCallback;
 	s_brightness_slider.minvalue = 1;
 	s_brightness_slider.maxvalue = 20;
+#ifdef __ANDROID__
+    if( yquake2Renderer == 1 ) // Don't have any gamma control
+    {
+        float gl1_overbrightbits = Cvar_VariableValue("gl1_overbrightbits");
+        s_brightness_slider.curvalue = ((gl1_overbrightbits  - 1) * 7.f);
+    }
+    else
+    {
+        s_brightness_slider.curvalue = vid_gamma->value * 10;
+    }
+#else
 	s_brightness_slider.curvalue = vid_gamma->value * 10;
-
-	s_fov_slider.generic.type = MTYPE_SLIDER;
-	s_fov_slider.generic.x = 0;
-	s_fov_slider.generic.y = (y += 10);
-	s_fov_slider.generic.name = "field of view";
-	s_fov_slider.generic.callback = FOVCallback;
-	s_fov_slider.minvalue = 60;
-	s_fov_slider.maxvalue = 120;
-	s_fov_slider.curvalue = fov->value;
+#endif
 
 	s_uiscale_list.generic.type = MTYPE_SPINCONTROL;
 	s_uiscale_list.generic.name = "ui scale";
@@ -517,10 +516,9 @@ VID_MenuInit(void)
 	s_apply_action.generic.y = (y += 10);
 	s_apply_action.generic.callback = ApplyChanges;
 
-	Menu_AddItem(&s_opengl_menu, (void *)&s_renderer_list);
-	Menu_AddItem(&s_opengl_menu, (void *)&s_mode_list);
+//	Menu_AddItem(&s_opengl_menu, (void *)&s_renderer_list);
+//	Menu_AddItem(&s_opengl_menu, (void *)&s_mode_list);
 	Menu_AddItem(&s_opengl_menu, (void *)&s_brightness_slider);
-	Menu_AddItem(&s_opengl_menu, (void *)&s_fov_slider);
 	Menu_AddItem(&s_opengl_menu, (void *)&s_uiscale_list);
 	Menu_AddItem(&s_opengl_menu, (void *)&s_fs_box);
 	Menu_AddItem(&s_opengl_menu, (void *)&s_vsync_list);

@@ -1736,23 +1736,7 @@ PutClientInServer(edict_t *ent)
 	client->ps.pmove.origin[1] = spawn_origin[1] * 8;
 	client->ps.pmove.origin[2] = spawn_origin[2] * 8;
 
-	if (deathmatch->value && ((int)dmflags->value & DF_FIXED_FOV))
-	{
-		client->ps.fov = 90;
-	}
-	else
-	{
-		client->ps.fov = (int)strtol(Info_ValueForKey(client->pers.userinfo, "fov"), (char **)NULL, 10);
-
-		if (client->ps.fov < 1)
-		{
-			client->ps.fov = 90;
-		}
-		else if (client->ps.fov > 160)
-		{
-			client->ps.fov = 160;
-		}
-	}
+	client->ps.fov = gi.getFOV();
 
 	client->ps.gunindex = gi.modelindex(client->pers.weapon->view_model);
 
@@ -1972,7 +1956,7 @@ ClientUserinfoChanged(edict_t *ent, char *userinfo)
 			va("%s\\%s", ent->client->pers.netname, s));
 
 	/* fov */
-	if (deathmatch->value && ((int)dmflags->value & DF_FIXED_FOV))
+	/*if (deathmatch->value && ((int)dmflags->value & DF_FIXED_FOV))
 	{
 		ent->client->ps.fov = 90;
 	}
@@ -1988,7 +1972,8 @@ ClientUserinfoChanged(edict_t *ent, char *userinfo)
 		{
 			ent->client->ps.fov = 160;
 		}
-	}
+	}*/
+	ent->client->ps.fov = gi.getFOV();
 
 	/* handedness */
 	s = Info_ValueForKey(userinfo, "hand");
@@ -2196,6 +2181,61 @@ PrintPmove(pmove_t *pm)
 	gi.dprintf("sv %3i:%i %i\n", pm->cmd.impulse, c1, c2);
 }
 
+
+vec3_t origin_b;
+vec3_t angles_b;
+
+vec3_t weaponangles;
+vec3_t weaponoffset;
+vec3_t hmdPosition;
+
+extern cvar_t *vr_worldscale;
+extern cvar_t *vr_height_adjust;
+
+void convertFromVRtoQ2(vec3_t in, vec3_t offset, vec3_t out)
+{
+	vec3_t vrSpace;
+	VectorSet(vrSpace, -in[2], in[0], in[1]);
+	vec3_t temp;
+	VectorScale(vrSpace, vr_worldscale->value, temp);
+
+	if (offset) {
+		VectorAdd(temp, offset, out);
+	} else {
+		VectorCopy(temp, out);
+	}
+}
+
+static void SV_SetWeapon_Client6DOF(edict_t *ent)
+{
+	//Backup origin
+	VectorCopy(ent->s.origin, origin_b);
+	VectorCopy(ent->client->v_angle, angles_b);
+
+	vec3_t origin;
+	vec3_t weaponoffsetQ2;
+	vec3_t offset;
+	VectorSet(offset, 0, 0, 6-ent->viewheight);
+	convertFromVRtoQ2(weaponoffset, offset, weaponoffsetQ2);
+	VectorCopy(ent->s.origin, origin);
+
+	//add player actual real world height - controller location is relative to HMD
+	if (ent->client->ps.pmove.pm_flags & PMF_DUCKED)
+	{
+		origin[2] -= 48; //??
+	}
+
+	origin[2] += ((hmdPosition[1] + vr_height_adjust->value) * vr_worldscale->value);
+	VectorAdd(weaponoffsetQ2, origin, ent->s.origin);
+	VectorCopy(weaponangles, ent->client->v_angle); // use adjusted angles
+}
+
+static void SV_Restore_Client6DOF(edict_t *ent)
+{
+	VectorCopy(origin_b, ent->s.origin);
+	VectorCopy(angles_b, ent->client->v_angle);
+}
+
 /*
  * This will be called once for each client frame, which will
  * usually be a couple times for each server frame.
@@ -2229,6 +2269,9 @@ ClientThink(edict_t *ent, usercmd_t *ucmd)
 
 		return;
 	}
+
+	//Get VR stuff
+	gi.getVROrigins(weaponoffset, weaponangles, hmdPosition);
 
 	pm_passent = ent;
 
@@ -2305,8 +2348,16 @@ ClientThink(edict_t *ent, usercmd_t *ucmd)
 		if (ent->groundentity && !pm.groundentity && (pm.cmd.upmove >= 10) &&
 			(pm.waterlevel == 0))
 		{
-			gi.sound(ent, CHAN_VOICE, gi.soundindex(
-							"*jump1.wav"), 1, ATTN_NORM, 0);
+			/* Only play the grunt for a genuine upward jump (velocity[2] > 0), not for
+			 * merely leaving the ground - e.g. running off a ledge/step with jump held,
+			 * which was making it fire far too often in VR. Also gated by vr_jump_sound
+			 * so it can be turned off entirely. PlayerNoise is left on the stock
+			 * condition so monster AI hearing is unchanged. */
+			if (vr_jump_sound->value && (ent->velocity[2] > 0))
+			{
+				gi.sound(ent, CHAN_VOICE, gi.soundindex(
+								"*jump1.wav"), 1, ATTN_NORM, 0);
+			}
 			PlayerNoise(ent, ent->s.origin, PNOISE_SELF);
 		}
 
@@ -2394,7 +2445,12 @@ ClientThink(edict_t *ent, usercmd_t *ucmd)
 		else if (!client->weapon_thunk)
 		{
 			client->weapon_thunk = true;
+
+			SV_SetWeapon_Client6DOF(ent);
+
 			Think_Weapon(ent);
+
+			SV_Restore_Client6DOF(ent);
 		}
 	}
 
@@ -2468,7 +2524,11 @@ ClientBeginServerFrame(edict_t *ent)
 	/* run weapon animations if it hasn't been done by a ucmd_t */
 	if (!client->weapon_thunk && !client->resp.spectator)
 	{
+		SV_SetWeapon_Client6DOF(ent);
+
 		Think_Weapon(ent);
+
+		SV_Restore_Client6DOF(ent);
 	}
 	else
 	{

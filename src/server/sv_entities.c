@@ -166,7 +166,7 @@ SV_WritePlayerstateToClient(client_frame_t *from, client_frame_t *to,
 	}
 
 	/* determine what needs to be sent */
-	pflags = 0;
+	pflags = PS_VRSERVER; // we are a VR server!
 
 	if (ps->pmove.pm_type != ops->pmove.pm_type)
 	{
@@ -267,16 +267,16 @@ SV_WritePlayerstateToClient(client_frame_t *from, client_frame_t *to,
 
 	if (pflags & PS_M_ORIGIN)
 	{
-		MSG_WriteShort(msg, ps->pmove.origin[0]);
-		MSG_WriteShort(msg, ps->pmove.origin[1]);
-		MSG_WriteShort(msg, ps->pmove.origin[2]);
+		MSG_WriteFloat(msg, ps->pmove.origin[0]);
+		MSG_WriteFloat(msg, ps->pmove.origin[1]);
+		MSG_WriteFloat(msg, ps->pmove.origin[2]);
 	}
 
 	if (pflags & PS_M_VELOCITY)
 	{
-		MSG_WriteShort(msg, ps->pmove.velocity[0]);
-		MSG_WriteShort(msg, ps->pmove.velocity[1]);
-		MSG_WriteShort(msg, ps->pmove.velocity[2]);
+		MSG_WriteFloat(msg, ps->pmove.velocity[0]);
+		MSG_WriteFloat(msg, ps->pmove.velocity[1]);
+		MSG_WriteFloat(msg, ps->pmove.velocity[2]);
 	}
 
 	if (pflags & PS_M_TIME)
@@ -291,14 +291,14 @@ SV_WritePlayerstateToClient(client_frame_t *from, client_frame_t *to,
 
 	if (pflags & PS_M_GRAVITY)
 	{
-		MSG_WriteShort(msg, ps->pmove.gravity);
+		MSG_WriteFloat(msg, ps->pmove.gravity);
 	}
 
 	if (pflags & PS_M_DELTA_ANGLES)
 	{
-		MSG_WriteShort(msg, ps->pmove.delta_angles[0]);
-		MSG_WriteShort(msg, ps->pmove.delta_angles[1]);
-		MSG_WriteShort(msg, ps->pmove.delta_angles[2]);
+		MSG_WriteFloat(msg, ps->pmove.delta_angles[0]);
+		MSG_WriteFloat(msg, ps->pmove.delta_angles[1]);
+		MSG_WriteFloat(msg, ps->pmove.delta_angles[2]);
 	}
 
 	/* write the rest of the player_state_t */
@@ -326,6 +326,9 @@ SV_WritePlayerstateToClient(client_frame_t *from, client_frame_t *to,
 	if (pflags & PS_WEAPONINDEX)
 	{
 		MSG_WriteByte(msg, ps->gunindex);
+
+		//We are a VR server so write this out
+		MSG_WriteByte(msg, ps->weapmodel);
 	}
 
 	if (pflags & PS_WEAPONFRAME)

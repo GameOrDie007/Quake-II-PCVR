@@ -415,13 +415,27 @@ cvar_t *cl_pitchspeed;
 cvar_t *cl_run;
 cvar_t *cl_anglespeedkey;
 
+void VR_GetMove( float *forward, float *side, float *up, float *yaw, float *pitch, float *roll );
+
+typedef struct {
+	float forward;
+	float side;
+	float up;
+	float yaw;
+	float pitch;
+	float roll;
+} vr_move;
+
+vr_move new_move;
+vr_move old_move;
+
 /*
  * Moves the local angle positions
  */
 void
 CL_AdjustAngles(void)
 {
-	float speed;
+/*	float speed;
 	float up, down;
 
 	if (in_speed.state & 1)
@@ -451,6 +465,20 @@ CL_AdjustAngles(void)
 
 	cl.viewangles[PITCH] -= speed * cl_pitchspeed->value * up;
 	cl.viewangles[PITCH] += speed * cl_pitchspeed->value * down;
+ */
+
+	cl.viewangles[YAW] -= old_move.yaw;
+	cl.viewangles[YAW] += new_move.yaw;
+
+	//Make angles good
+	while (cl.viewangles[YAW] > 180.0f)
+		cl.viewangles[YAW] -= 360.0f;
+	while (cl.viewangles[YAW] < -180.0f)
+		cl.viewangles[YAW] += 360.0f;
+
+	cl.viewangles[PITCH] = new_move.pitch;
+
+	cl.viewangles[ROLL] = new_move.roll;
 }
 
 /*
@@ -459,12 +487,14 @@ CL_AdjustAngles(void)
 void
 CL_BaseMove(usercmd_t *cmd)
 {
+	VR_GetMove(&new_move.forward, &new_move.side, &new_move.up, &new_move.yaw, &new_move.pitch, &new_move.roll);
+
 	CL_AdjustAngles();
 
 	memset(cmd, 0, sizeof(*cmd));
 
 	VectorCopy(cl.viewangles, cmd->angles);
-
+/*
 	if (in_strafe.state & 1)
 	{
 		cmd->sidemove += cl_sidespeed->value * CL_KeyState(&in_right);
@@ -481,28 +511,38 @@ CL_BaseMove(usercmd_t *cmd)
 	{
 		cmd->forwardmove += cl_forwardspeed->value * CL_KeyState(&in_forward);
 		cmd->forwardmove -= cl_forwardspeed->value * CL_KeyState(&in_back);
-	}
+	}*/
+
+	//cmd->upmove = cl_upspeed->value * new_move.up;
+	cmd->upmove += cl_upspeed->value * CL_KeyState (&in_up);
+	cmd->upmove -= cl_upspeed->value * CL_KeyState (&in_down);
+
+	cmd->forwardmove = cl_forwardspeed->value * new_move.forward;
+	cmd->sidemove = cl_sidespeed->value * new_move.side;
 
 	/* adjust for speed key / running */
 	if ((in_speed.state & 1) ^ (int)(cl_run->value))
 	{
-		cmd->forwardmove *= 2;
-		cmd->sidemove *= 2;
-		cmd->upmove *= 2;
+		cmd->forwardmove *= 1.5;
+		cmd->sidemove *= 1.5;
+		cmd->upmove *= 1.5;
 	}
+
+	//retain the move from this
+	old_move = new_move;
 }
 
 void
 CL_ClampPitch(void)
 {
-	float pitch;
+	float pitch = 0;
 
-	pitch = SHORT2ANGLE(cl.frame.playerstate.pmove.delta_angles[PITCH]);
+	/*pitch = SHORT2ANGLE(cl.frame.playerstate.pmove.delta_angles[PITCH]);
 
 	if (pitch > 180)
 	{
 		pitch -= 360;
-	}
+	}*/
 
 	if (cl.viewangles[PITCH] + pitch < -360)
 	{
@@ -550,6 +590,13 @@ CL_FinishMove(usercmd_t *cmd)
 	{
 		cmd->buttons |= BUTTON_ANY;
 	}
+
+#ifdef __ANDROID__
+    if ((cmd->buttons & BUTTON_ATTACK) && (cls.key_dest == key_game))
+    {
+        cmd->buttons |= BUTTON_ANY;
+    }
+#endif
 
 	/* send milliseconds of time to apply the move */
 	ms = cls.nframetime * 1000;
@@ -630,7 +677,9 @@ CL_InitInput(void)
 
 	cl_nodelta = Cvar_Get("cl_nodelta", "0", 0);
 }
-
+#ifdef __ANDROID__
+    //void IN_Move_Android( usercmd_t *cmd );
+#endif
 void
 CL_RefreshCmd(void)
 {
@@ -655,7 +704,10 @@ CL_RefreshCmd(void)
 
 	// Add movement
 	CL_BaseMove(cmd);
-	IN_Move(cmd);
+	//IN_Move(cmd);
+#ifdef __ANDROID__
+    //IN_Move_Android(cmd);
+#endif
 
 	// Clamp angels for prediction
 	CL_ClampPitch();
@@ -707,8 +759,10 @@ CL_RefreshMove(void)
 
 	// Add movement
 	CL_BaseMove(cmd);
-	IN_Move(cmd);
-
+	//IN_Move(cmd);
+#ifdef __ANDROID__
+    //IN_Move_Android(cmd);
+#endif
 	old_sys_frame_time = sys_frame_time;
 }
 
@@ -740,6 +794,13 @@ CL_FinalizeCmd(void)
 	{
 		cmd->buttons |= BUTTON_ANY;
 	}
+
+#ifdef __ANDROID__
+    if ((cmd->buttons & BUTTON_ATTACK) && (cls.key_dest == key_game))
+    {
+        cmd->buttons |= BUTTON_ANY;
+    }
+#endif
 
 	cmd->impulse = in_impulse;
 	in_impulse = 0;

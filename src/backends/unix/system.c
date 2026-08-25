@@ -41,6 +41,10 @@
 #include <mach/mach.h>
 #endif
 
+#ifdef __ANDROID__
+#define FNDELAY 0
+#endif
+
 #include "../../common/header/common.h"
 #include "../../common/header/glob.h"
 
@@ -54,6 +58,13 @@ qboolean stdin_active = true;
 extern FILE	*logfile;
 
 /* ================================================================ */
+
+#ifdef __ANDROID__
+#include <android/log.h>
+#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO,"yquake2", __VA_ARGS__))
+#define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "yquake2", __VA_ARGS__))
+#define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR,"yquake2", __VA_ARGS__))
+#endif
 
 void
 Sys_Error(char *error, ...)
@@ -74,6 +85,9 @@ Sys_Error(char *error, ...)
 	va_end(argptr);
 	fprintf(stderr, "Error: %s\n", string);
 
+#ifdef __ANDROID__
+	LOGI("ERROR: %s", string);
+#endif
 	exit(1);
 }
 
@@ -154,6 +168,9 @@ Sys_ConsoleInput(void)
 void
 Sys_ConsoleOutput(char *string)
 {
+#ifdef __ANDROID__
+	LOGI("Sys_ConsoleOutput: %s", string);
+#endif
 	fputs(string, stdout);
 }
 
@@ -336,6 +353,13 @@ Sys_UnloadGame(void)
 	game_library = NULL;
 }
 
+#ifdef __ANDROID__
+
+//#include "quake_game_dll.h"
+int getGameType();
+
+#endif
+
 void *
 Sys_GetGameAPI(void *parms)
 {
@@ -347,7 +371,40 @@ Sys_GetGameAPI(void *parms)
 #ifdef __APPLE__
 	const char *gamename = "game.dylib";
 #else
+#ifdef __ANDROID__
+	const char *gamename;
+//	if( getGameType() == Q2DLL_GAME )
+	{
+	    gamename = "libyquake2_game.so";
+    }
+/*    else if( getGameType() == Q2DLL_ROGUE )
+    {
+        gamename = "libyquake2_rogue.so";
+    }
+    else if( getGameType() == Q2DLL_XATRIX )
+    {
+        gamename = "libyquake2_xatrix.so";
+    }
+    else if( getGameType() == Q2DLL_CTF )
+    {
+        gamename = "libyquake2_ctf.so";
+    }
+    else if( getGameType() == Q2DLL_3ZB2 )
+    {
+        gamename = "libyquake2_3zb2.so";
+    }
+    else if( getGameType() == Q2DLL_SMD )
+    {
+        gamename = "libyquake2_smd.so";
+    }
+    else if( getGameType() == Q2DLL_ZAERO )
+    {
+        gamename = "libyquake2_zaero.so";
+    }*/
+
+#else
 	const char *gamename = "game.so";
+#endif
 #endif
 
 	if (game_library)
@@ -365,7 +422,9 @@ Sys_GetGameAPI(void *parms)
 		FILE *fp;
 
 		path = FS_NextPath(path);
-
+#ifdef __ANDROID__
+		path = (char*)getenv("YQUAKE2_GAMELIBDIR");
+#endif
 		if (!path)
 		{
 			return NULL;     /* couldn't find one anywhere */

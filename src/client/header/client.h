@@ -267,9 +267,7 @@ extern client_static_t	cls;
 extern int num_power_sounds;
 
 /* cvars */
-extern	cvar_t	*gl1_stereo_separation;
-extern	cvar_t	*gl1_stereo_convergence;
-extern	cvar_t	*gl1_stereo;
+extern	cvar_t	*vr_worldscale;
 extern	cvar_t	*cl_gun;
 extern	cvar_t	*cl_add_blend;
 extern	cvar_t	*cl_add_lights;
@@ -321,6 +319,20 @@ extern	entity_state_t	cl_parse_entities[MAX_PARSE_ENTITIES];
 extern	netadr_t	net_from;
 extern	sizebuf_t	net_message;
 
+typedef struct
+{
+    const char* name;     // segment for matching icon file
+    const int index;      // index in inventory
+    const char* command;  // command triggered when icon is selected. Also display name
+    const char* ammo;     // weapons only. type of ammo used by this weapon
+    const int ammo_i;     // weapons only. index of ammo amount in inventory
+    const int x;          // h offset from center of selection wheel
+    const int y;          // v offset from center of selection wheel
+} wheel_icon_t;
+
+extern const wheel_icon_t weaponIcons[];
+extern const wheel_icon_t itemIcons[];
+
 void DrawString (int x, int y, char *s);
 void DrawStringScaled(int x, int y, char *s, float factor);
 void DrawAltString (int x, int y, char *s);	/* toggle high bit */
@@ -352,6 +364,7 @@ void CL_ParticleEffect2 (vec3_t org, vec3_t dir, int color, int count);
 
 void CL_ParticleEffect3 (vec3_t org, vec3_t dir, int color, int count);
 
+void CL_UpdateLaserSightOrigins ();
 
 typedef struct particle_s
 {
@@ -526,7 +539,7 @@ void M_AddToServerList (netadr_t adr, char *info);
 
 void CL_ParseInventory (void);
 void CL_KeyInventory (int key);
-void CL_DrawInventory (void);
+void CL_DrawInventory (float separation);
 
 void CL_PredictMovement (void);
 trace_t CL_PMTrace(vec3_t start, vec3_t mins, vec3_t maxs, vec3_t end);

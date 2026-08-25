@@ -235,7 +235,6 @@ R_RegisterVariables (void)
 	r_mode = ri.Cvar_Get( "r_mode", "0", CVAR_ARCHIVE );
 
 	r_lefthand = ri.Cvar_Get( "hand", "0", CVAR_USERINFO | CVAR_ARCHIVE );
-	r_gunfov = ri.Cvar_Get( "r_gunfov", "80", CVAR_ARCHIVE );
 	r_speeds = ri.Cvar_Get ("r_speeds", "0", 0);
 	r_fullbright = ri.Cvar_Get ("r_fullbright", "0", 0);
 	r_drawentities = ri.Cvar_Get ("r_drawentities", "1", 0);
@@ -249,7 +248,7 @@ R_RegisterVariables (void)
 	r_customwidth = ri.Cvar_Get("r_customwidth", "1024", CVAR_ARCHIVE);
 	r_customheight = ri.Cvar_Get("r_customheight", "768", CVAR_ARCHIVE);
 
-	vid_fullscreen = ri.Cvar_Get( "vid_fullscreen", "0", CVAR_ARCHIVE );
+	vid_fullscreen = ri.Cvar_Get( "vid_fullscreen", "1", CVAR_ARCHIVE );
 	vid_gamma = ri.Cvar_Get( "vid_gamma", "1.0", CVAR_ARCHIVE );
 
 	ri.Cmd_AddCommand("modellist", Mod_Modellist_f);
@@ -281,10 +280,10 @@ R_Init
 ===============
 */
 static qboolean
-RE_Init(void)
+RE_Init(int hmdType)
 {
 	R_RegisterVariables ();
-	R_InitImages ();
+	R_InitImages (hmdType);
 	Mod_Init ();
 	Draw_InitLocal ();
 
@@ -1763,6 +1762,9 @@ RE_EndFrame (void)
 
 	SDL_RenderCopy(renderer, texture, NULL, NULL);
 	SDL_RenderPresent(renderer);
+#ifdef __ANDROID__ // The touch controls change the viewport, call this to fix. This function does not exist in SDL2
+    SDL_ForceupdateViewport(renderer);
+#endif
 }
 
 /*

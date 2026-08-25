@@ -34,7 +34,7 @@
 
 #include "../../common/header/common.h"
 
-#if defined(__linux__) || defined(__FreeBSD__)
+#if (defined(__linux__) || defined(__FreeBSD__)) && !defined(__ANDROID__)
 #include <execinfo.h>
 
 void

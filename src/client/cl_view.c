@@ -256,13 +256,13 @@ CL_PrepRefresh(void)
 
 	/* register models, pics, and skins */
 	Com_Printf("Map: %s\r", mapname);
-	SCR_UpdateScreen();
+	SCR_UpdateForEye(0);
 	R_BeginRegistration (mapname);
 	Com_Printf("                                     \r");
 
 	/* precache status bar pics */
 	Com_Printf("pics\r");
-	SCR_UpdateScreen();
+	SCR_UpdateForEye(0);
 	SCR_TouchPics();
 	Com_Printf("                                     \r");
 
@@ -281,7 +281,7 @@ CL_PrepRefresh(void)
 			Com_Printf("%s\r", name);
 		}
 
-		SCR_UpdateScreen();
+		SCR_UpdateForEye(0);
 		IN_Update();
 
 		if (name[0] == '#')
@@ -317,7 +317,7 @@ CL_PrepRefresh(void)
 	}
 
 	Com_Printf("images\r");
-	SCR_UpdateScreen();
+	SCR_UpdateForEye(0);
 
 	for (i = 1; i < MAX_IMAGES && cl.configstrings[CS_IMAGES + i][0]; i++)
 	{
@@ -335,7 +335,7 @@ CL_PrepRefresh(void)
 		}
 
 		Com_Printf("client %i\r", i);
-		SCR_UpdateScreen();
+		SCR_UpdateForEye(0);
 		IN_Update();
 		CL_ParseClientinfo(i);
 		Com_Printf("                                     \r");
@@ -345,7 +345,7 @@ CL_PrepRefresh(void)
 
 	/* set sky textures and speed */
 	Com_Printf("sky\r");
-	SCR_UpdateScreen();
+	SCR_UpdateForEye(0);
 	rotate = (float)strtod(cl.configstrings[CS_SKYROTATE], (char **)NULL);
 	sscanf(cl.configstrings[CS_SKYAXIS], "%f %f %f", &axis[0], &axis[1], &axis[2]);
 	R_SetSky(cl.configstrings[CS_SKY], rotate, axis);
@@ -357,7 +357,7 @@ CL_PrepRefresh(void)
 	/* clear any lines of console text */
 	Con_ClearNotify();
 
-	SCR_UpdateScreen();
+	SCR_UpdateForEye(0);
 	cl.refresh_prepped = true;
 	cl.force_refdef = true; /* make sure we have a valid refdef */
 
@@ -374,24 +374,22 @@ CL_PrepRefresh(void)
 	}
 }
 
-float
-CalcFov(float fov_x, float width, float height)
-{
-	float a;
-	float x;
+#define RAD2DEG( x )	((float)(x) * (float)(180.f / M_PI))
+#define DEG2RAD( x )	((float)(x) * (float)(M_PI / 180.f))
 
-	if ((fov_x < 1) || (fov_x > 179))
+float CalcFov( float fov_x, float width, float height )
+{
+	float	x, half_fov_y;
+
+	if( fov_x < 1.0f || fov_x > 170.0f )
 	{
 		Com_Error(ERR_DROP, "Bad fov: %f", fov_x);
 	}
 
-	x = width / (float)tan(fov_x / 360 * M_PI);
+	x = width / tan( DEG2RAD( fov_x ) * 0.5f );
+	half_fov_y = atan( height / x );
 
-	a = (float)atan(height / x);
-
-	a = a * 360 / M_PI;
-
-	return a;
+	return RAD2DEG( half_fov_y ) * 2;
 }
 
 /* gun frame debugging functions */
@@ -445,6 +443,10 @@ entitycmpfnc(const entity_t *a, const entity_t *b)
 			(a->model > b->model) ? 1 : -1;
 	}
 }
+
+extern vec3_t hmdPosition;
+extern cvar_t *vr_worldscale;
+extern cvar_t *vr_height_adjust;
 
 void
 V_RenderView(float stereo_separation)
@@ -519,6 +521,12 @@ V_RenderView(float stereo_separation)
 			VectorAdd(cl.refdef.vieworg, tmp, cl.refdef.vieworg);
 		}
 
+		//subtract standard height of player
+		cl.refdef.vieworg[2] -= (QUAKE_MARINE_HEIGHT * vr_worldscale->value);
+		//add player actual real world height
+		cl.refdef.vieworg[2] += ((hmdPosition[1] + vr_height_adjust->value) * vr_worldscale->value);
+
+
 		/* never let it sit exactly on a node line, because a water plane can
 		   dissapear when viewed with the eye exactly on it. the server protocol
 		   only specifies to 1/8 pixel, so add 1/16 in each axis */
@@ -564,7 +572,7 @@ V_RenderView(float stereo_separation)
 		qsort(cl.refdef.entities, cl.refdef.num_entities,
 				sizeof(cl.refdef.entities[0]), (int (*)(const void *, const void *))
 				entitycmpfnc);
-	} else if (cl.frame.valid && cl_paused->value && gl1_stereo->value) {
+	} else if (cl.frame.valid && cl_paused->value) {
 		// We need to adjust the refdef in stereo mode when paused.  
 		vec3_t tmp;  
 		CL_CalcViewValues();  
@@ -594,6 +602,7 @@ V_RenderView(float stereo_separation)
 	}
 
 	if (log_stats->value && (log_stats_file != 0))
+	if (log_stats->value && (log_stats_file != 0))
 	{
 		fprintf(log_stats_file, "%i,%i,%i,", r_numentities,
 				r_numdlights, r_numparticles);
@@ -603,7 +612,7 @@ V_RenderView(float stereo_separation)
 	SCR_AddDirtyPoint(scr_vrect.x + scr_vrect.width - 1,
 			scr_vrect.y + scr_vrect.height - 1);
 
-	SCR_DrawCrosshair();
+	//SCR_DrawCrosshair();
 }
 
 void 

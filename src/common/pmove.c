@@ -63,7 +63,7 @@ pml_t pml;
 float pm_stopspeed = 100;
 float pm_maxspeed = 300;
 float pm_duckspeed = 100;
-float pm_accelerate = 10;
+float	pm_accelerate = 10000; //Instant acceleration in VR to allow for positional movement
 float pm_airaccelerate = 0;
 float pm_wateraccelerate = 10;
 float pm_friction = 6;
@@ -134,8 +134,12 @@ PM_StepSlideMove_(void)
 
 		if (trace.allsolid)
 		{
-			/* entity is trapped in another solid */
-			pml.velocity[2] = 0; /* don't build up falling damage */
+			/* entity is trapped in another solid. Kill ALL velocity, not just the
+			 * vertical: otherwise PM_AirMove keeps accelerating the player into the
+			 * wall every frame (the slide can't clip it while trapped), which both
+			 * pins them and builds up to a launch when they finally come free.
+			 * PM_SnapPosition will extract them from the solid. */
+			VectorClear(pml.velocity);
 			return;
 		}
 
@@ -1137,61 +1141,77 @@ PM_GoodPosition(void)
 void
 PM_SnapPosition(void)
 {
-	int sign[3];
 	int i, j, bits;
-	short base[3];
-	/* try all single bits first */
-	static int jitterbits[8] = {0, 4, 1, 2, 3, 5, 6, 7};
+	int sign[3];
+	float base[3];
+	/* try the unmodified position first, then single-axis nudges, then pairs */
+	static const int jitterbits[8] = {0, 4, 1, 2, 3, 5, 6, 7};
 
-	/* snap velocity to eigths */
-	for (i = 0; i < 3; i++)
-	{
-		pm->s.velocity[i] = (int)(pml.velocity[i] * 8);
+	for (i = 0; i < 3; i++) {
+		pm->s.velocity[i] = pml.velocity[i] * 8.0f;
 	}
 
-	for (i = 0; i < 3; i++)
-	{
-		if (pml.origin[i] >= 0)
-		{
-			sign[i] = 1;
-		}
-		else
-		{
-			sign[i] = -1;
-		}
-
-		pm->s.origin[i] = (int)(pml.origin[i] * 8);
-
-		if (pm->s.origin[i] * 0.125f == pml.origin[i])
-		{
-			sign[i] = 0;
-		}
+	/* NB: we keep the full-precision float value here (no truncation to the
+	 * 1/8 unit grid). Re-quantizing was what broke smooth VR positional
+	 * tracking; jitterbits[0] below tests this exact position first, so when
+	 * we are not stuck we return it untouched. */
+	for (i = 0; i < 3; i++) {
+		sign[i] = (pml.origin[i] >= 0) ? 1 : -1;
+		pm->s.origin[i] = pml.origin[i] * 8.0f;
 	}
 
 	VectorCopy(pm->s.origin, base);
 
-	/* try all combinations */
-	for (j = 0; j < 8; j++)
-	{
+	/* Anti-stuck search (restored from stock Quake II): try the position as-is,
+	 * then progressively nudge each axis by +/- one 1/8 unit to escape a solid. */
+	for (j = 0; j < 8; j++) {
 		bits = jitterbits[j];
 		VectorCopy(base, pm->s.origin);
 
-		for (i = 0; i < 3; i++)
-		{
-			if (bits & (1 << i))
-			{
+		for (i = 0; i < 3; i++) {
+			if (bits & (1 << i)) {
 				pm->s.origin[i] += sign[i];
 			}
 		}
 
-		if (PM_GoodPosition())
-		{
+		if (PM_GoodPosition()) {
 			return;
 		}
 	}
 
-	/* go back to the last position */
-	VectorCopy(pml.previous_origin, pm->s.origin);
+	/* The small jitter above only escapes sub-unit penetration. Diagnostics showed the
+	 * player can end up genuinely embedded several units into a wall after a jump, with
+	 * previous_origin also embedded - so neither the jitter nor a revert can free them.
+	 * Search outwards along each axis for the nearest non-solid spot and move there.
+	 * We do this even in mid-air: being nudged free is always better than staying
+	 * embedded (which is exactly what causes the wall-stick). */
+	{
+		float radius;
+		int ax, dir;
+		for (radius = 1.0f; radius <= 40.0f; radius += 1.0f)
+		{
+			for (ax = 0; ax < 3; ax++)
+			{
+				for (dir = -1; dir <= 1; dir += 2)
+				{
+					VectorCopy(base, pm->s.origin);
+					pm->s.origin[ax] += dir * radius * 8.0f; /* radius world units in 1/8 space */
+
+					if (PM_GoodPosition())
+					{
+						return;
+					}
+				}
+			}
+		}
+	}
+
+	/* Could not find any free spot nearby (very rare). Fall back to the previous origin
+	 * when on the ground; in mid-air leave the position so physics keeps running. */
+	if (pm->groundentity)
+	{
+		VectorCopy(pml.previous_origin, pm->s.origin);
+	}
 }
 
 void
@@ -1248,7 +1268,7 @@ PM_ClampAngles(void)
 		/* circularly clamp the angles with deltas */
 		for (i = 0; i < 3; i++)
 		{
-			temp = pm->cmd.angles[i] + pm->s.delta_angles[i];
+			temp = pm->cmd.angles[i] + (i == YAW ? pm->s.delta_angles[i] : 0); // Fix pitch/roll being wrong after save
 			pm->viewangles[i] = SHORT2ANGLE(temp);
 		}
 
@@ -1390,10 +1410,10 @@ Pmove(pmove_t *pmove)
 	/* set mins, maxs, and viewheight */
 	PM_CheckDuck();
 
-	if (pm->snapinitial)
+/*	if (pm->snapinitial)
 	{
 		PM_InitialSnapPosition();
-	}
+	}*/
 
 	/* set groundentity, watertype, and waterlevel */
 	PM_CatagorizePosition();

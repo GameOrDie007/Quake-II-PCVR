@@ -36,7 +36,7 @@
 #include "game.h"
 
 /* the "gameversion" client command will print this plus compile date */
-#define GAMEVERSION "baseq2"
+#define GAMEVERSION "Quake2Quest"
 
 /* protocol bytes that can be directly added to messages */
 #define svc_muzzleflash 1
@@ -518,6 +518,14 @@ extern cvar_t *sv_maxvelocity;
 extern cvar_t *gun_x, *gun_y, *gun_z;
 extern cvar_t *sv_rollspeed;
 extern cvar_t *sv_rollangle;
+
+//VR Stuff
+extern cvar_t *r_lefthand;
+extern cvar_t *vr_worldscale;
+extern cvar_t *vr_height_adjust;
+extern cvar_t *vr_lasersight;
+extern cvar_t *vr_weapon_stabilised;
+extern cvar_t *vr_jump_sound;
 
 extern cvar_t *run_pitch;
 extern cvar_t *run_roll;

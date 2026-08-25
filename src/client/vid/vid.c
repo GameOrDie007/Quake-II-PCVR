@@ -267,6 +267,8 @@ VID_ListModes_f(void)
 qboolean
 VID_GetModeInfo(int *width, int *height, int mode)
 {
+    return GLimp_GetDesktopMode(width, height);
+
 	if ((mode < 0) || (mode >= VID_NUM_MODES))
 	{
 		return false;
@@ -329,6 +331,12 @@ VID_ShutdownRenderer(void)
 	ref_active = false;
 }
 
+#ifdef __ANDROID__
+	int yquake2Renderer = 0; // 0 = soft, 1 = gl1, 3 = gl3
+
+	extern int hmdType;
+#endif
+
 /*
  * Loads and initializes a renderer.
  */
@@ -360,6 +368,18 @@ VID_LoadRenderer(void)
 	snprintf(reflib_path, sizeof(reflib_path), "%s%s", Sys_GetBinaryDir(), reflib_name);
 	Com_Printf("LoadLibrary(%s)\n", reflib_name);
 
+#ifdef __ANDROID__
+	char* nativeLibsPath = getenv("YQUAKE2_GAMELIBDIR");
+	snprintf(reflib_path, sizeof(reflib_path), "%s/libyquake2_%s.so", nativeLibsPath,vid_renderer->string);
+
+	Com_Printf("LoadLibrary path(%s)\n", reflib_path);
+	if( !strcmp(vid_renderer->string,"soft") )
+	    yquake2Renderer = 0;
+    else if( !strcmp(vid_renderer->string,"gl1") )
+        yquake2Renderer = 1;
+    else if( !strcmp(vid_renderer->string,"gl3") )
+        yquake2Renderer = 3;
+#endif
 	// Mkay, let's load the requested renderer.
 	GetRefAPI = Sys_LoadLibrary(reflib_path, "GetRefAPI", &reflib_handle);
 
@@ -410,7 +430,7 @@ VID_LoadRenderer(void)
 	}
 
 	// Everything seems okay, initialize it.
-	if (!re.Init())
+	if (!re.Init(hmdType))
 	{
 		VID_ShutdownRenderer();
 
@@ -495,7 +515,7 @@ VID_Init(void)
 	// Console variables
 	vid_gamma = Cvar_Get("vid_gamma", "1.0", CVAR_ARCHIVE);
 	vid_fullscreen = Cvar_Get("vid_fullscreen", "0", CVAR_ARCHIVE);
-	vid_renderer = Cvar_Get("vid_renderer", "gl1", CVAR_ARCHIVE);
+	vid_renderer = Cvar_Get("vid_renderer", "gl3", CVAR_ARCHIVE);
 
 	// Commands
 	Cmd_AddCommand("vid_restart", VID_Restart_f);
@@ -685,6 +705,17 @@ R_BeginFrame(float camera_separation)
 	{
 		re.BeginFrame(camera_separation);
 	}
+}
+
+qboolean
+R_SetMode()
+{
+	if (ref_active)
+	{
+		return re.SetMode();
+	}
+
+	return false;
 }
 
 void

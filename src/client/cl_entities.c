@@ -26,6 +26,7 @@
 
 #include <math.h>
 #include "header/client.h"
+#include "../../../Quake2VR/mathlib.h"
 
 extern struct model_s *cl_mod_powerscreen;
 
@@ -636,6 +637,119 @@ CL_AddPacketEntities(frame_t *frame)
 	}
 }
 
+
+extern cvar_t *vr_worldscale;
+extern cvar_t *vr_weaponscale;
+extern cvar_t *vr_height_adjust;
+extern vec3_t weaponangles;
+extern vec3_t weaponoffset;
+extern vec3_t hmdorientation;
+extern vec3_t hmdPosition;
+
+void convertFromVRtoQ2(vec3_t in, vec3_t offset, vec3_t out);
+
+// gitem_t->weapmodel for weapons indicates model index
+#define WEAP_BLASTER			1
+#define WEAP_SHOTGUN			2
+#define WEAP_SUPERSHOTGUN		3
+#define WEAP_MACHINEGUN			4
+#define WEAP_CHAINGUN			5
+#define WEAP_GRENADES			6
+#define WEAP_GRENADELAUNCHER	7
+#define WEAP_ROCKETLAUNCHER		8
+#define WEAP_HYPERBLASTER		9
+#define WEAP_RAILGUN			10
+#define WEAP_BFG				11
+
+
+void convertFromVRtoQ2(vec3_t in, vec3_t offset, vec3_t out)
+{
+	vec3_t vrSpace;
+	VectorSet(vrSpace, -in[2], in[0], in[1]);
+	vec3_t temp;
+	VectorScale(vrSpace, vr_worldscale->value, temp);
+
+	if (offset) {
+		VectorAdd(temp, offset, out);
+	} else {
+		VectorCopy(temp, out);
+	}
+}
+
+void SetWeapon6DOF(int weapmodel, vec3_t origin, vec3_t gunorigin, vec3_t gunangles)
+{
+	vec3_t gunoffset;
+	convertFromVRtoQ2(weaponoffset, NULL, gunoffset);
+
+    cvar_t *r_lefthand = Cvar_Get( "hand", "0", CVAR_USERINFO | CVAR_ARCHIVE );
+
+    //fb / lr / ud
+    vec3_t offset;
+    VectorSet(offset, 0, 0, 0);
+
+    // pitch / yaw / roll
+    vec3_t angleAdjust;
+    VectorSet(angleAdjust, 0, 0, 0);
+
+
+    if (weapmodel != 0)
+    {
+        char cvar_name[64];
+        Com_sprintf(cvar_name, sizeof(cvar_name), "vr_weapon_adjustment_%i", weapmodel);
+
+        //Default for the models
+        cvar_t *weapon_adjustment = Cvar_Get( cvar_name, "10.0,7.0,-8.0,-3.0,0.0,0.0", CVAR_ARCHIVE );
+
+		vec3_t temp_offset;
+        VectorSet(temp_offset, 0, 0, 0);
+        sscanf(weapon_adjustment->string, "%f,%f,%f,%f,%f,%f", &(temp_offset[0]), &(temp_offset[1]), &(temp_offset[2]), &(angleAdjust[0]), &(angleAdjust[1]), &(angleAdjust[2]));
+        VectorScale(temp_offset, vr_weaponscale->value, offset);
+
+		int lrOffset = (( r_lefthand->value != 0.0f ) ? -1 : 1);
+		offset[1] *= lrOffset;
+    }
+
+
+	vec3_t tempAngles;
+	VectorCopy(weaponangles, tempAngles);
+	tempAngles[PITCH] -= 180.0;
+
+
+	matrix4x4 mat1;
+	Matrix4x4_CreateFromEntity(mat1, vec3_origin, offset, 1.0);
+
+	matrix4x4 mat2;
+	Matrix4x4_CreateFromEntity(mat2, tempAngles, vec3_origin, 1.0);
+
+	matrix4x4 mat3;
+	Matrix4x4_Concat(mat3, mat2, mat1);
+
+	vec3_t position_adjust;
+	Matrix3x4_OriginFromMatrix(mat3, position_adjust);
+
+	VectorAdd(origin, gunoffset, gunorigin);
+	VectorAdd(gunorigin, position_adjust, gunorigin);
+
+	matrix4x4 matAngleAdjust;
+	Matrix4x4_CreateFromEntity(matAngleAdjust, angleAdjust, vec3_origin, 1.0);
+
+	/* Recoil the gun's orientation by the weapon kick (the same kick the bullets and
+	 * laser sight use), so the muzzle visibly climbs while firing. Only the orientation
+	 * is kicked - the grip/origin stays put in the hand - and the view is never kicked. */
+	vec3_t recoiledWeaponAngles;
+	VectorAdd(weaponangles, cl.frame.playerstate.kick_angles, recoiledWeaponAngles);
+
+	matrix4x4 matWeaponAngles;
+	Matrix4x4_CreateFromEntity(matWeaponAngles, recoiledWeaponAngles, vec3_origin, 1.0);
+
+	matrix4x4 matGunAngles;
+	Matrix4x4_Concat(matGunAngles, matWeaponAngles, matAngleAdjust);
+
+	vec3_t dummy;
+	Matrix4x4_ConvertToEntity(matGunAngles, gunangles, dummy);
+}
+
+
 void
 CL_AddViewWeapon(player_state_t *ps, player_state_t *ops)
 {
@@ -646,15 +760,6 @@ CL_AddViewWeapon(player_state_t *ps, player_state_t *ops)
 	if (!cl_gun->value)
 	{
 		return;
-	}
-
-	/* don't draw gun if in wide angle view and drawing not forced */
-	if (ps->fov > 90)
-	{
-		if (cl_gun->value < 2)
-		{
-			return;
-		}
 	}
 
 	if (gun_model)
@@ -673,13 +778,11 @@ CL_AddViewWeapon(player_state_t *ps, player_state_t *ops)
 	}
 
 	/* set up gun position */
-	for (i = 0; i < 3; i++)
-	{
-		gun.origin[i] = cl.refdef.vieworg[i] + ops->gunoffset[i]
-			+ cl.lerpfrac * (ps->gunoffset[i] - ops->gunoffset[i]);
-		gun.angles[i] = cl.refdef.viewangles[i] + LerpAngle(ops->gunangles[i],
-			ps->gunangles[i], cl.lerpfrac);
-	}
+	SetWeapon6DOF(ps->weapmodel, cl.refdef.vieworg, gun.origin, gun.angles);
+
+	//add player actual real world height - controller location is relative to HMD
+	gun.origin[2] -= (QUAKE_MARINE_HEIGHT * vr_worldscale->value);
+	gun.origin[2] += ((hmdPosition[1] + vr_height_adjust->value) * vr_worldscale->value);
 
 	if (gun_frame)
 	{
@@ -703,6 +806,8 @@ CL_AddViewWeapon(player_state_t *ps, player_state_t *ops)
 	gun.flags = RF_MINLIGHT | RF_DEPTHHACK | RF_WEAPONMODEL;
 	gun.backlerp = 1.0f - cl.lerpfrac;
 	VectorCopy(gun.origin, gun.oldorigin); /* don't lerp at all */
+    //HACK!
+    CL_UpdateLaserSightOrigins(/*gun.origin*/);
 	V_AddEntity(&gun);
 }
 
@@ -752,9 +857,9 @@ CL_CalcViewValues(void)
 	ops = &oldframe->playerstate;
 
 	/* see if the player entity was teleported this frame */
-	if ((abs(ops->pmove.origin[0] - ps->pmove.origin[0]) > 256 * 8) ||
-		(abs(ops->pmove.origin[1] - ps->pmove.origin[1]) > 256 * 8) ||
-		(abs(ops->pmove.origin[2] - ps->pmove.origin[2]) > 256 * 8))
+	if ((fabsf(ops->pmove.origin[0] - ps->pmove.origin[0]) > 256 * 8) ||
+		(fabsf(ops->pmove.origin[1] - ps->pmove.origin[1]) > 256 * 8) ||
+		(fabsf(ops->pmove.origin[2] - ps->pmove.origin[2]) > 256 * 8))
 	{
 		ops = ps; /* don't interpolate */
 	}
@@ -821,11 +926,10 @@ CL_CalcViewValues(void)
 		}
 	}
 
-	for (i = 0; i < 3; i++)
-	{
-		cl.refdef.viewangles[i] += LerpAngle(ops->kick_angles[i],
-				ps->kick_angles[i], lerp);
-	}
+	/* Do NOT apply weapon kick_angles to the view in VR - the headset must never be
+	 * rotated by recoil (nauseating, and it makes the gun appear not to recoil since it
+	 * moves with the view). kick_angles is still delivered in the player_state so the
+	 * laser sight can track the recoiled fire direction; see CL_UpdateLaserSightOrigins. */
 
 	AngleVectors(cl.refdef.viewangles, cl.v_forward, cl.v_right, cl.v_up);
 

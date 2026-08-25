@@ -154,6 +154,150 @@ R_DrawAliasFrameLerp(dmdl_t *paliashdr, float backlerp)
 
 	R_LerpVerts(paliashdr->num_xyz, v, ov, verts, lerp, move, frontv, backv);
 
+#ifdef USE_GLES1
+	static gl3_alias_vtx_t vtxBuf[50000];
+	static GLushort idxBuf[10000];
+
+	int vtxBuf_pos = 0;
+	int idxBuf_pos = 0;
+
+	while (1)
+    {
+        GLushort nextVtxIdx = vtxBuf_pos;
+
+        /* get the vertex count and primitive type */
+        count = *order++;
+
+        if (!count)
+        {
+            break; /* done */
+        }
+
+        if (count < 0)
+        {
+            count = -count;
+
+            type = GL_TRIANGLE_FAN;
+        }
+        else
+        {
+            type = GL_TRIANGLE_STRIP;
+        }
+
+        //gl3_alias_vtx_t* buf = da_addn_uninit(vtxBuf, count);
+		gl3_alias_vtx_t* buf = &vtxBuf[vtxBuf_pos];
+		vtxBuf_pos += count;
+
+        if (currententity->flags &
+            (RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE))
+        {
+            int i;
+            for(i=0; i<count; ++i)
+            {
+                int j=0;
+                gl3_alias_vtx_t* cur = &buf[i];
+                index_xyz = order[2];
+                order += 3;
+
+                for(j=0; j<3; ++j)
+                {
+                    cur->pos[j] = s_lerped[index_xyz][j];
+                    cur->color[j] = shadelight[j];
+                }
+                cur->color[3] = alpha;
+            }
+        }
+        else
+        {
+            int i;
+            for(i=0; i<count; ++i)
+            {
+                int j=0;
+                gl3_alias_vtx_t* cur = &buf[i];
+                /* texture coordinates come from the draw list */
+                cur->texCoord[0] = ((float *) order)[0];
+                cur->texCoord[1] = ((float *) order)[1];
+
+                index_xyz = order[2];
+
+                order += 3;
+
+                /* normals and vertexes come from the frame list */
+                // shadedots is set above according to rotation (around Z axis I think)
+                // to one of 16 (SHADEDOT_QUANT) presets in r_avertexnormal_dots
+                l = shadedots[verts[index_xyz].lightnormalindex];
+
+                for(j=0; j<3; ++j)
+                {
+                    cur->pos[j] = s_lerped[index_xyz][j];
+                    cur->color[j] = l * shadelight[j];
+                }
+                cur->color[3] = alpha;
+            }
+        }
+
+        // translate triangle fan/strip to just triangle indices
+        if(type == GL_TRIANGLE_FAN)
+        {
+            GLushort i;
+            for(i=1; i < count-1; ++i)
+            {
+                //GLushort* add = da_addn_uninit(idxBuf, 3);
+                GLushort* add = &idxBuf[idxBuf_pos];
+                idxBuf_pos += 3;
+
+                add[0] = nextVtxIdx;
+                add[1] = nextVtxIdx+i;
+                add[2] = nextVtxIdx+i+1;
+            }
+        }
+        else // triangle strip
+        {
+            GLushort i;
+            for(i=1; i < count-2; i+=2)
+            {
+                // add two triangles at once, because the vertex order is different
+                // for odd vs even triangles
+                //GLushort* add = da_addn_uninit(idxBuf, 6);
+                GLushort* add = &idxBuf[idxBuf_pos];
+                idxBuf_pos += 6;
+
+                add[0] = nextVtxIdx + i-1;
+                add[1] = nextVtxIdx + i;
+                add[2] = nextVtxIdx + i+1;
+
+                add[3] = nextVtxIdx + i;
+                add[4] = nextVtxIdx + i+2;
+                add[5] = nextVtxIdx + i+1;
+            }
+            // add remaining triangle, if any
+            if(i < count-1)
+            {
+                //GLushort* add = da_addn_uninit(idxBuf, 3);
+                GLushort* add = &idxBuf[idxBuf_pos];
+                idxBuf_pos += 3;
+
+                add[0] = nextVtxIdx + i-1;
+                add[1] = nextVtxIdx + i;
+                add[2] = nextVtxIdx + i+1;
+            }
+        }
+    }
+
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+	glEnableClientState(GL_COLOR_ARRAY);
+
+	glVertexPointer(3, GL_FLOAT,  sizeof(gl3_alias_vtx_t), vtxBuf->pos);
+	glTexCoordPointer(2, GL_FLOAT, sizeof(gl3_alias_vtx_t), vtxBuf->texCoord);
+	glColorPointer(4, GL_FLOAT, sizeof(gl3_alias_vtx_t), vtxBuf->color);
+	glDrawElements(GL_TRIANGLES, idxBuf_pos, GL_UNSIGNED_SHORT, idxBuf);
+
+	glDisableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+	glDisableClientState(GL_COLOR_ARRAY);
+
+#else
 		while (1)
 		{
 			/* get the vertex count and primitive type */
@@ -241,6 +385,7 @@ R_DrawAliasFrameLerp(dmdl_t *paliashdr, float backlerp)
 			glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 			glDisableClientState(GL_COLOR_ARRAY);
 		}
+#endif
 
 	if (currententity->flags &
 		(RF_SHELL_RED | RF_SHELL_GREEN | RF_SHELL_BLUE |
@@ -659,10 +804,10 @@ R_DrawAliasModel(entity_t *e)
 	if (currententity->flags & RF_DEPTHHACK)
 	{
 		/* hack the depth range to prevent view model from poking into walls */
-		glDepthRange(gldepthmin, gldepthmin + 0.3 * (gldepthmax - gldepthmin));
+		glDepthRangef(gldepthmin, gldepthmin + 0.3 * (gldepthmax - gldepthmin));
 	}
 
-	if (currententity->flags & RF_WEAPONMODEL)
+/*	if (currententity->flags & RF_WEAPONMODEL)
 	{
 		extern void R_MYgluPerspective(GLdouble fovy, GLdouble aspect,
 				GLdouble zNear, GLdouble zFar);
@@ -680,12 +825,25 @@ R_DrawAliasModel(entity_t *e)
 
 		if (gl_lefthand->value == 1.0F)
 			glCullFace(GL_BACK);
-	}
+	}*/
 
 	glPushMatrix();
 	e->angles[PITCH] = -e->angles[PITCH];
 	R_RotateForEntity(e);
 	e->angles[PITCH] = -e->angles[PITCH];
+
+	if ( currententity->flags & RF_WEAPONMODEL )
+	{
+		if ( gl_lefthand->value == 1.0F ) {
+			glScalef(vr_weaponscale->value, -vr_weaponscale->value, vr_weaponscale->value);
+		} else {
+			glScalef(vr_weaponscale->value, vr_weaponscale->value, vr_weaponscale->value);
+		}
+
+		if ( gl_lefthand->value == 1.0F ) {
+			glCullFace( GL_BACK );
+		}
+	}
 
 	/* select skin */
 	if (currententity->skin)
@@ -755,7 +913,7 @@ R_DrawAliasModel(entity_t *e)
 	glShadeModel(GL_FLAT);
 
 	glPopMatrix();
-
+#ifndef USE_GLES1
 	if (gl_showbbox->value)
 	{
 		glDisable(GL_CULL_FACE);
@@ -773,16 +931,13 @@ R_DrawAliasModel(entity_t *e)
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		glEnable(GL_CULL_FACE);
 	}
-
-	if (currententity->flags & RF_WEAPONMODEL)
+#endif
+	if ( ( currententity->flags & RF_WEAPONMODEL ) )
 	{
-		glMatrixMode(GL_PROJECTION);
-		glPopMatrix();
-		glMatrixMode(GL_MODELVIEW);
-		if (gl_lefthand->value == 1.0F)
+		if ( gl_lefthand->value == 1.0F ) {
 			glCullFace(GL_FRONT);
+		}
 	}
-
 	if (currententity->flags & RF_TRANSLUCENT)
 	{
 		glDisable(GL_BLEND);
@@ -790,7 +945,7 @@ R_DrawAliasModel(entity_t *e)
 
 	if (currententity->flags & RF_DEPTHHACK)
 	{
-		glDepthRange(gldepthmin, gldepthmax);
+		glDepthRangef(gldepthmin, gldepthmax);
 	}
 
 	if (gl_shadows->value &&

@@ -25,7 +25,9 @@
  * =======================================================================
  */
 
+#include <stdbool.h>
 #include "header/client.h"
+#include "../../../Quake2VR/VrCvars.h"
 
 float scr_con_current; /* aproaches scr_conlines at scr_conspeed */
 float scr_conlines; /* 0.0 to 1.0 lines of console to display */
@@ -69,6 +71,165 @@ extern cvar_t *crosshair_scale;
 
 void SCR_TimeRefresh_f(void);
 void SCR_Loading_f(void);
+
+const wheel_icon_t weaponIcons[11] = {
+        {
+                "w_blaster",
+                7,
+                "Blaster",
+                NULL,
+                0,
+                0,
+                -160
+        },
+        {
+                "w_shotgun",
+                8,
+                "Shotgun",
+                "shells",
+                18,
+                86,
+                -134
+        },
+        {
+                "w_sshotgun",
+                9,
+                "Super Shotgun",
+                "shells",
+                18,
+                145,
+                -66
+        },
+        {
+                "w_machinegun",
+                10,
+                "Machinegun",
+                "bullets",
+                19,
+                158,
+                22
+        },
+        {
+                "w_chaingun",
+                11,
+                "Chaingun",
+                "bullets",
+                19,
+                120,
+                104
+        },
+        {
+                "w_grenades",
+                12,
+                "Grenades",
+                "grenades",
+                12,
+                45,
+                153
+        },
+        {
+                "w_glauncher",
+                13,
+                "Grenade Launcher",
+                "grenades",
+                12,
+                -45,
+                153
+        },
+        {
+                "w_rlauncher",
+                14,
+                "Rocket Launcher",
+                "rockets",
+                21,
+                -120,
+                104
+        },
+        {
+                "w_hyperblaster",
+                15,
+                "HyperBlaster",
+                "cells",
+                20,
+                -158,
+                22
+        },
+        {
+                "w_railgun",
+                16,
+                "Railgun",
+                "slugs",
+                22,
+                -145,
+                -66
+        },
+        {
+                "w_bfg",
+                17,
+                "BFG10K",
+                "cells",
+                20,
+                -86,
+                -134
+        }
+};
+
+const wheel_icon_t itemIcons[6] = {
+        {
+                "p_silencer",
+                25,
+                "Silencer",
+                NULL,
+                0,
+                0,
+                -160
+        },
+        {
+                "p_rebreather",
+                26,
+                "Rebreather",
+                NULL,
+                0,
+                138,
+                -80
+        },
+        {
+                "p_envirosuit",
+                27,
+                "Environment Suit",
+                NULL,
+                0,
+                138,
+                80
+        },
+        {
+                "i_powershield",
+                6,
+                "Power Shield",
+                NULL,
+                0,
+                0,
+                160
+        },
+        {
+                "p_quad",
+                23,
+                "Quad Damage",
+                NULL,
+                0,
+                -138,
+                80
+        },
+        {
+                "p_invulnerability",
+                24,
+                "Invulnerability",
+                NULL,
+                0,
+                -138,
+                -80
+        }
+};
 
 /*
  * A new packet was just parsed
@@ -244,8 +405,12 @@ SCR_CenterPrint(char *str)
 	Con_ClearNotify();
 }
 
+/* defined further down; forward-declared so the HUD/centerprint draws above can converge for VR */
+static int SCR_GetStereoHudOffsetScaled(float separation, float depthScale);
+static int SCR_GetStereoHudOffset(float separation);
+
 void
-SCR_DrawCenterString(void)
+SCR_DrawCenterString(float separation)
 {
 	char *start;
 	int l;
@@ -255,6 +420,10 @@ SCR_DrawCenterString(void)
 	float scale;
     const int char_unscaled_width  = 8;
     const int char_unscaled_height = 8;
+	/* centerprints (e.g. level hint messages like "crouch here") must be shifted
+	 * per-eye like the rest of the HUD, otherwise they're not stereo-converged and
+	 * are unreadable in VR. */
+	int offset_stereo = SCR_GetStereoHudOffset(separation);
 
 	/* the finale prints the characters one at a time */
 	remaining = 9999;
@@ -265,7 +434,7 @@ SCR_DrawCenterString(void)
 
 	if (scr_center_lines <= 4)
 	{
-		y = (viddef.height * 0.35) / scale;
+		y = (viddef.height * 0.4) / scale;
 	}
 
 	else
@@ -289,7 +458,7 @@ SCR_DrawCenterString(void)
 
 		for (j = 0; j < l; j++, x += char_unscaled_width)
 		{
-			Draw_CharScaled(x * scale, y * scale, start[j], scale);
+			Draw_CharScaled(x * scale + offset_stereo, y * scale, start[j], scale);
 
 			if (!remaining--)
 			{
@@ -317,7 +486,7 @@ SCR_DrawCenterString(void)
 }
 
 void
-SCR_CheckDrawCenterString(void)
+SCR_CheckDrawCenterString(float separation)
 {
 	scr_centertime_off -= cls.rframetime;
 
@@ -326,7 +495,7 @@ SCR_CheckDrawCenterString(void)
 		return;
 	}
 
-	SCR_DrawCenterString();
+	SCR_DrawCenterString(separation);
 }
 
 /*
@@ -446,23 +615,25 @@ SCR_Init(void)
 }
 
 void
-SCR_DrawNet(void)
+SCR_DrawNet(float separation)
 {
 	float scale = SCR_GetMenuScale();
+	int offset_stereo = SCR_GetStereoHudOffset(separation);
 
 	if (cls.netchan.outgoing_sequence - cls.netchan.incoming_acknowledged < CMD_BACKUP - 1)
 	{
 		return;
 	}
 
-	Draw_PicScaled(scr_vrect.x + 64 * scale, scr_vrect.y, "net", scale);
+	Draw_PicScaled(scr_vrect.x + 64 * scale + offset_stereo, scr_vrect.y, "net", scale);
 }
 
 void
-SCR_DrawPause(void)
+SCR_DrawPause(float separation)
 {
 	int w, h;
 	float scale = SCR_GetMenuScale();
+	int offset_stereo = SCR_GetStereoHudOffset(separation);
 
 	if (!scr_showpause->value) /* turn off for screenshots */
 	{
@@ -475,7 +646,239 @@ SCR_DrawPause(void)
 	}
 
 	Draw_GetPicSize(&w, &h, "pause");
-	Draw_PicScaled((viddef.width - w * scale) / 2, viddef.height / 2 + 8 * scale, "pause", scale);
+	Draw_PicScaled((viddef.width - w * scale) / 2 + offset_stereo, viddef.height / 2 + 8 * scale, "pause", scale);
+}
+
+/*
+==============
+SCR_DrawVignette
+==============
+*/
+extern bool player_moving;
+
+void SCR_DrawVignette (float separation)
+{
+	if (vr_comfort_mask->value <= 0.0f ||
+		vr_comfort_mask->value > 1.0f)
+	{
+		return;
+	}
+
+	static float currentVLevel = 0.0f;
+
+	if (player_moving)
+	{
+		if (currentVLevel <  vr_comfort_mask->value)
+			currentVLevel += vr_comfort_mask->value * 0.05;
+	} else{
+		if (currentVLevel >  0.0f)
+			currentVLevel -= vr_comfort_mask->value * 0.05;
+	}
+
+	if (currentVLevel > 0.0f &&
+		currentVLevel < 1.0f)
+	{
+		/* The comfort mask must fill the whole eye and close in towards the eye's
+		 * OPTICAL centre, which - with an asymmetric VR FOV - is not the centre of
+		 * the framebuffer. Derive it from this eye's projection (the same fov tan
+		 * values the renderer uses); fall back to the framebuffer centre if unknown.
+		 * Note this is NOT a HUD element, so it deliberately ignores the HUD stereo
+		 * offset and is sized to the full eye, not the HUD plane. */
+		int eye = separation < 0 ? 0 : 1;
+		float left  = Cvar_VariableValue(eye == 0 ? "gl1_openxr_fov_left_0"  : "gl1_openxr_fov_left_1");
+		float right = Cvar_VariableValue(eye == 0 ? "gl1_openxr_fov_right_0" : "gl1_openxr_fov_right_1");
+		float up    = Cvar_VariableValue(eye == 0 ? "gl1_openxr_fov_up_0"    : "gl1_openxr_fov_up_1");
+		float down  = Cvar_VariableValue(eye == 0 ? "gl1_openxr_fov_down_0"  : "gl1_openxr_fov_down_1");
+		float denomX = right - left;
+		float denomY = up - down;
+
+		/* optical centre in framebuffer pixels (tan == 0 is the view axis) */
+		float cx = (fabsf(denomX) > 0.0001f) ? (viddef.width  * (-left / denomX)) : (viddef.width  * 0.5f);
+		float cy = (fabsf(denomY) > 0.0001f) ? (viddef.height * (up / denomY))    : (viddef.height * 0.5f);
+
+		/* shrink the full-eye mask towards (cx,cy); size matches the old behaviour,
+		 * only the centre moves (identical when the FOV is symmetric) */
+		int x = (int)(cx * currentVLevel);
+		int y = (int)(cy * currentVLevel);
+		int w = (int)(viddef.width  * (1.0f - currentVLevel));
+		int h = (int)(viddef.height * (1.0f - currentVLevel));
+
+		re.DrawStretchPic(x, y, w, h, "/vignette.tga");
+	}
+}
+
+extern qboolean draw_item_wheel;
+extern qboolean isItems;
+extern vec2_t polarCursor;
+extern int segment;
+static float cursorFactor = 200/15; // 200 is the radius of the ring image
+                                    // 15 is the same radius in VR scale
+
+static qboolean
+SCR_UsingOpenXRStereo(void)
+{
+	return (int)Cvar_VariableValue("gl1_stereo") == 8;
+}
+
+/*
+ * Per-eye horizontal HUD offset. depthScale lets an element be placed nearer to
+ * (depthScale < 1) or further from (depthScale > 1) the viewer than the rest of
+ * the HUD: only the depth-parallax term is scaled, while the FOV-centering term
+ * is left untouched so the element stays stereo-correct. depthScale == 1 gives
+ * the normal HUD depth.
+ */
+static int
+SCR_GetStereoHudOffsetScaled(float separation, float depthScale)
+{
+	/* On the flat "screen layer" (menus, console, paused, demos, cinematics) the scene
+	 * is rendered once and shown to both eyes on a quad - a per-eye offset would just
+	 * push the HUD off-centre with no convergence benefit. This mirrors useScreenLayer()
+	 * in Q2VR_SurfaceView.c; keep the two in sync. */
+	if ((cls.state != ca_connected && cls.state != ca_active) ||
+		cls.key_dest != key_game ||
+		cl.attractloop ||
+		cl.cinematictime != 0)
+	{
+		return 0;
+	}
+
+	if (SCR_UsingOpenXRStereo())
+	{
+		int eye = separation < 0 ? 0 : 1;
+		float left = Cvar_VariableValue(eye == 0 ? "gl1_openxr_fov_left_0" : "gl1_openxr_fov_left_1");
+		float right = Cvar_VariableValue(eye == 0 ? "gl1_openxr_fov_right_0" : "gl1_openxr_fov_right_1");
+		float width = (float)viddef.width;
+		float denom = right - left;
+
+		if (fabsf(denom) > 0.0001f)
+		{
+			float hud_depth = Cvar_VariableValue("vr_hud_depth");
+			float hud_ipd = Cvar_VariableValue("vr_hud_ipd");
+			float depth_offset;
+			float optical_center = width * (-left / denom);
+			float offset = optical_center - (width * 0.5f);
+
+			if (hud_depth <= 0.0f)
+			{
+				hud_depth = 0.5f;
+			}
+			if (hud_ipd <= 0.0f)
+			{
+				hud_ipd = 0.064f;
+			}
+			if (depthScale <= 0.0f)
+			{
+				depthScale = 1.0f;
+			}
+
+			depth_offset = ((hud_ipd * 0.5f) / (hud_depth * depthScale)) * (width / denom);
+			offset += (eye == 0) ? depth_offset : -depth_offset;
+
+			return (int)(offset + (offset >= 0.0f ? 0.5f : -0.5f));
+		}
+
+		return 0;
+	}
+
+	return (separation > 0) ? -25 : 25;
+}
+
+static int
+SCR_GetStereoHudOffset(float separation)
+{
+	return SCR_GetStereoHudOffsetScaled(separation, 1.0f);
+}
+
+void
+DrawNumberCenteredImageScaled(int x, int y, char* num, float scale)
+{
+    int len = strlen(num);
+    int width = 8; // half of img width
+    int height = 12; // half of img height
+    for(int i = 0; i < len; i++){
+        char image[6];
+        sprintf(image, "num_%c", num[i]);
+        float offset = width * ((i * 2) - (len));
+        Draw_PicScaled(x + offset, y - (height * scale), image,
+                       scale);
+    }
+}
+
+void
+SCR_DrawItemWheel (float separation)
+{
+    int totalIcons;
+    wheel_icon_t* iconlist;
+    if(!isItems) {
+        totalIcons = 11;
+        iconlist = weaponIcons;
+    } else {
+        totalIcons = 6;
+        iconlist = itemIcons;
+    }
+    if(draw_item_wheel) {
+        int offset_stereo = SCR_GetStereoHudOffset(separation);
+        int ringw, ringh;
+        int curw, curh;
+        int vidwc = (viddef.width/2);
+        int vidhc = (viddef.height/2);
+        Draw_GetPicSize(&ringw, &ringh,"/wheel/ring.png");
+        Draw_PicScaled((vidwc - (ringw/2)) + offset_stereo, (vidhc - (ringh/2)), "/wheel/ring.png", 1.0f);
+        Draw_GetPicSize(&curw, &curh,"/wheel/cursor.png");
+        Draw_PicScaled((vidwc - (curw/2)) + ((polarCursor[0] * cosf(polarCursor[1])) * cursorFactor) + offset_stereo,
+                       (vidwc - (curh/2)) + ((polarCursor[0] * sinf(polarCursor[1])) * cursorFactor),
+                       "/wheel/cursor.png", 1.0f);
+
+        for(int i = 0; i < totalIcons; i++)
+        {
+            if(cl.inventory[iconlist[i].index])
+            { // if weapon is available in inventory
+                char iconName[40];
+                char ammoName[30];
+                char ammoAmount[4];
+                float iconFactor;
+                float ammoFactor = 4.0f;
+                int iconWidth = 12; // actually half of icon size. For centering purposes
+                if (i == segment && polarCursor[0] > 8)
+                { // if cursor is inside the segment corresponding to the item
+                    // Highlighted weapon: drawn a little larger and popped slightly towards
+                    // the user. The pop is done by scaling only the depth-parallax term of
+                    // the stereo offset (depthScale < 1 == nearer); scaling the whole offset
+                    // - as a previous *1.3f did - corrupts the FOV-centering term and makes
+                    // the icon stereo-incorrect.
+                    iconFactor = 3.0f;
+                    int offset_stereo_selected = SCR_GetStereoHudOffsetScaled(separation, 0.9f);
+                    DrawStringScaled(vidwc + offset_stereo - (strlen(iconlist[i].command) * 4),
+                                     vidhc - 100,
+                                     iconlist[i].command, 1.0f); // Item name
+                    sprintf(iconName, "/wheel/%s_selected.png", iconlist[i].name); // selected icon path
+                    Draw_PicScaled(vidwc + iconlist[i].x - (iconWidth * iconFactor) + offset_stereo_selected,
+                                   vidhc + iconlist[i].y - (iconWidth * iconFactor), iconName,
+                                   iconFactor);
+                    if(iconlist[i].ammo) {
+                        sprintf(ammoAmount, "%i", cl.inventory[iconlist[i].ammo_i]);
+                        DrawNumberCenteredImageScaled(vidwc + offset_stereo, vidhc + 100,
+                                                      ammoAmount,
+                                                      1.0f); // ammo amount in image numbers
+                        sprintf(ammoName, "/wheel/a_%s.png", iconlist[i].ammo); // ammo icon path
+                        Draw_PicScaled(vidwc - (iconWidth * ammoFactor) +
+                                       offset_stereo, // ammo icon for the weapon
+                                       vidhc - (iconWidth * ammoFactor), ammoName,
+                                       ammoFactor);
+                    }
+                }
+                else
+                {
+                    iconFactor = 1.5f;
+                    sprintf(iconName, "/wheel/%s.png", iconlist[i].name);
+                    Draw_PicScaled(vidwc + iconlist[i].x - (iconWidth * iconFactor) + (offset_stereo),
+                                   vidhc + iconlist[i].y - (iconWidth * iconFactor), iconName,
+                                   iconFactor);
+                }
+            }
+        }
+
+    }
 }
 
 void
@@ -530,14 +933,18 @@ SCR_RunConsole(void)
 }
 
 void
-SCR_DrawConsole(void)
+SCR_DrawConsole(float separation)
 {
 	Con_CheckResize();
 
 	if ((cls.state == ca_disconnected) || (cls.state == ca_connecting))
 	{
 		/* forced full screen console */
+#ifdef __ANDROID__
+		Con_DrawConsole(0.5); // Always half screen for keyboard
+#else
 		Con_DrawConsole(1.0);
+#endif
 		return;
 	}
 
@@ -600,7 +1007,7 @@ SCR_BeginLoadingPlaque(void)
 		scr_draw_loading = 1;
 	}
 
-	SCR_UpdateScreen();
+	SCR_UpdateForEye(0);
 
 	scr_draw_loading = false;
 
@@ -1016,7 +1423,7 @@ SCR_TouchPics(void)
 }
 
 void
-SCR_ExecuteLayoutString(char *s)
+SCR_ExecuteLayoutString(char *s,float separation)
 {
 	int x, y;
 	int value;
@@ -1040,6 +1447,8 @@ SCR_ExecuteLayoutString(char *s)
 	x = 0;
 	y = 0;
 
+	int offset_stereo = SCR_GetStereoHudOffset(separation);
+
 	while (s)
 	{
 		token = COM_Parse(&s);
@@ -1047,42 +1456,48 @@ SCR_ExecuteLayoutString(char *s)
 		if (!strcmp(token, "xl"))
 		{
 			token = COM_Parse(&s);
-			x = scale*(int)strtol(token, (char **)NULL, 10);
+			x = scale*(int)strtol(token, (char **)NULL, 10) + offset_stereo;
 			continue;
 		}
 
 		if (!strcmp(token, "xr"))
 		{
 			token = COM_Parse(&s);
-			x = viddef.width + scale*(int)strtol(token, (char **)NULL, 10);
+			x = viddef.width + scale*(int)strtol(token, (char **)NULL, 10) + offset_stereo;
 			continue;
 		}
 
 		if (!strcmp(token, "xv"))
 		{
 			token = COM_Parse(&s);
-			x = viddef.width / 2 - scale*160 + scale*(int)strtol(token, (char **)NULL, 10);
+			x = viddef.width / 2 - scale*160 + scale*(int)strtol(token, (char **)NULL, 10) + offset_stereo;
+			continue;
+		}
+		if (!strcmp(token, "xh"))
+		{
+			token = COM_Parse (&s);
+			x = viddef.width/2 - 160 + atoi(token) + offset_stereo;
 			continue;
 		}
 
 		if (!strcmp(token, "yt"))
 		{
 			token = COM_Parse(&s);
-			y = scale*(int)strtol(token, (char **)NULL, 10);
+			y = viddef.height/3 + scale*(int)strtol(token, (char **)NULL, 10);
 			continue;
 		}
 
 		if (!strcmp(token, "yb"))
 		{
 			token = COM_Parse(&s);
-			y = viddef.height + scale*(int)strtol(token, (char **)NULL, 10);
+			y = (viddef.height * 0.72) + scale*(int)strtol(token, (char **)NULL, 10);
 			continue;
 		}
 
 		if (!strcmp(token, "yv"))
 		{
 			token = COM_Parse(&s);
-			y = viddef.height / 2 - scale*120 + scale*(int)strtol(token, (char **)NULL, 10);
+			y = viddef.height / 2 + scale*(int)strtol(token, (char **)NULL, 10);
 			continue;
 		}
 
@@ -1122,7 +1537,7 @@ SCR_ExecuteLayoutString(char *s)
 			token = COM_Parse(&s);
 			x = viddef.width / 2 - scale*160 + scale*(int)strtol(token, (char **)NULL, 10);
 			token = COM_Parse(&s);
-			y = viddef.height / 2 - scale*120 + scale*(int)strtol(token, (char **)NULL, 10);
+			y = viddef.height / 2 + scale*(int)strtol(token, (char **)NULL, 10);
 			SCR_AddDirtyPoint(x, y);
 			SCR_AddDirtyPoint(x + scale*159, y + scale*31);
 
@@ -1169,7 +1584,7 @@ SCR_ExecuteLayoutString(char *s)
 			token = COM_Parse(&s);
 			x = viddef.width / 2 - scale*160 + scale*(int)strtol(token, (char **)NULL, 10);
 			token = COM_Parse(&s);
-			y = viddef.height / 2 - scale*120 + scale*(int)strtol(token, (char **)NULL, 10);
+			y = viddef.height / 2 + scale*(int)strtol(token, (char **)NULL, 10);
 			SCR_AddDirtyPoint(x, y);
 			SCR_AddDirtyPoint(x + scale*159, y + scale*31);
 
@@ -1388,22 +1803,22 @@ SCR_ExecuteLayoutString(char *s)
  * is based on the stats array
  */
 void
-SCR_DrawStats(void)
+SCR_DrawStats(float separation)
 {
-	SCR_ExecuteLayoutString(cl.configstrings[CS_STATUSBAR]);
+	SCR_ExecuteLayoutString(cl.configstrings[CS_STATUSBAR], separation);
 }
 
 #define STAT_LAYOUTS 13
 
 void
-SCR_DrawLayout(void)
+SCR_DrawLayout(float separation)
 {
 	if (!cl.frame.playerstate.stats[STAT_LAYOUTS])
 	{
 		return;
 	}
 
-	SCR_ExecuteLayoutString(cl.layout);
+	SCR_ExecuteLayoutString(cl.layout, separation);
 }
 
 // ----
@@ -1488,12 +1903,11 @@ SCR_Framecounter(void) {
  * This is called every frame, and can also be called
  * explicitly to flush text to the screen.
  */
-void
-SCR_UpdateScreen(void)
+void SCR_UpdateForEye (int eye)
 {
-	int numframes;
+	int numframes = 1;
 	int i;
-	float separation[2] = {0, 0};
+	float separation = 0;
 	float scale = SCR_GetMenuScale();
 
 	/* if the screen is disabled (loading plaque is
@@ -1514,22 +1928,12 @@ SCR_UpdateScreen(void)
 		return; /* not initialized yet */
 	}
 
-	if ( gl1_stereo->value )
-	{
-		numframes = 2;
-		separation[0] = -gl1_stereo_separation->value / 2;
-		separation[1] = +gl1_stereo_separation->value / 2;
-	}		
-	else
-	{
-		separation[0] = 0;
-		separation[1] = 0;
-		numframes = 1;
-	}
+	//World scale based separation
+	separation = ((-vr_worldscale->value * 0.065f) / 2) * (1 - (2*eye));
 
 	for (i = 0; i < numframes; i++)
 	{
-		R_BeginFrame(separation[i]);
+		R_BeginFrame(separation);
 
 		if (scr_draw_loading == 2)
 		{
@@ -1570,7 +1974,7 @@ SCR_UpdateScreen(void)
 					cl.cinematicpalette_active = false;
 				}
 
-				SCR_DrawConsole();
+				SCR_DrawConsole(separation);
 			}
 			else
 			{
@@ -1592,22 +1996,26 @@ SCR_UpdateScreen(void)
 			/* clear any dirty part of the background */
 			SCR_TileClear();
 
-			V_RenderView(separation[i]);
+			V_RenderView(separation);
 
-			SCR_DrawStats();
+            SCR_DrawVignette(separation);
+
+			SCR_DrawStats(separation);
 
 			if (cl.frame.playerstate.stats[STAT_LAYOUTS] & 1)
 			{
-				SCR_DrawLayout();
+				SCR_DrawLayout(separation);
 			}
 
 			if (cl.frame.playerstate.stats[STAT_LAYOUTS] & 2)
 			{
-				CL_DrawInventory();
+				CL_DrawInventory(separation);
 			}
 
-			SCR_DrawNet();
-			SCR_CheckDrawCenterString();
+            SCR_DrawItemWheel(separation);
+
+			SCR_DrawNet(separation);
+			SCR_CheckDrawCenterString(separation);
 
 			if (scr_timegraph->value)
 			{
@@ -1620,9 +2028,9 @@ SCR_UpdateScreen(void)
 				SCR_DrawDebugGraph();
 			}
 
-			SCR_DrawPause();
+			SCR_DrawPause(separation);
 
-			SCR_DrawConsole();
+			SCR_DrawConsole(separation);
 
 			M_Draw();
 
@@ -1630,7 +2038,6 @@ SCR_UpdateScreen(void)
 		}
 	}
 
-	SCR_Framecounter();
 	R_EndFrame();
 }
 
@@ -1662,7 +2069,7 @@ SCR_ClampScale(float scale)
 static float
 SCR_GetDefaultScale(void)
 {
-	int i = viddef.width / 640;
+/*	int i = viddef.width / 640;
 	int j = viddef.height / 240;
 
 	if (i > j)
@@ -1673,8 +2080,10 @@ SCR_GetDefaultScale(void)
 	{
 		i = 1;
 	}
-
 	return i;
+*/
+
+    return 1;
 }
 
 void

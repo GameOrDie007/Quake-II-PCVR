@@ -34,7 +34,7 @@
  */
 
 /* SDL includes */
-#include <SDL2/SDL.h>
+#include "../SupportLibs/SDL2/SDL2/include/SDL.h"
 
 /* Local includes */
 #include "../../client/header/client.h"
@@ -1317,8 +1317,9 @@ SDL_BackendInit(void)
 #endif
 
 	snprintf(reqdriver, sizeof(reqdriver), "%s=%s", "SDL_AUDIODRIVER", s_sdldriver->string);
+#ifndef __ANDROID__	
 	putenv(reqdriver);
-
+#endif
 	Com_Printf("Starting SDL audio callback.\n");
 
 	if (!SDL_WasInit(SDL_INIT_AUDIO))
