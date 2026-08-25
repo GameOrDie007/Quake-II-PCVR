@@ -598,6 +598,33 @@ q2xrFramebuffer_Acquire(q2xrFramebuffer *fb)
 static void
 q2xrFramebuffer_Resolve(q2xrFramebuffer *fb)
 {
+	/*
+	 * vr_srgb decides whether the resolve re-encodes into the sRGB swapchain.
+	 *
+	 * The engine renders with GL_FRAMEBUFFER_SRGB disabled, so it writes
+	 * gamma-space values and the raw copy (0) reproduces what a desktop GL
+	 * driver would put in front of the compositor. But GLES has no
+	 * GL_FRAMEBUFFER_SRGB unless EXT_sRGB_write_control is present; where it is
+	 * absent, writes into an sRGB framebuffer are encoded automatically, which
+	 * would make their Quest build brighter and more saturated than a literal
+	 * port of the same code on desktop.
+	 *
+	 * Which of those the standalone actually does is a property of the Adreno
+	 * driver, not of their source, so it cannot be settled by reading their
+	 * code. This is a switch rather than a guess: 1 encodes on resolve, and can
+	 * be toggled live to compare against the standalone.
+	 */
+	cvar_t *srgb = Cvar_Get("vr_srgb", "0", CVAR_ARCHIVE);
+
+	if (srgb->value != 0.0f)
+	{
+		glEnable(GL_FRAMEBUFFER_SRGB);
+	}
+	else
+	{
+		glDisable(GL_FRAMEBUFFER_SRGB);
+	}
+
 	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, fb->MsaaFrameBuffer);
 	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->FrameBuffers[fb->Index]);
 	gl.BlitFramebuffer(0, 0, fb->Width, fb->Height,
@@ -605,6 +632,7 @@ q2xrFramebuffer_Resolve(q2xrFramebuffer *fb)
 			GL_COLOR_BUFFER_BIT, GL_NEAREST);
 	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+	glDisable(GL_FRAMEBUFFER_SRGB);
 }
 
 static void
