@@ -2,73 +2,103 @@
 
 ---
 
-# REBASE STATUS — updated 2026-08-24
+# REBASE STATUS - updated 2026-08-24
 
-Branch `vr-741-base` in the `Quake2VR-741` worktree. Three commits so far.
+Branch `vr-741-base` in the `Quake2VR-741` worktree.
 
-## Done
+## Where it is
 
-**1. Stock 7.41 builds on Windows.** MSVC cannot compile it - 45 C99
+**The engine runs inside the OpenXR frame loop.** Verified against VDXR on a
+Quest 3: session created, both eye swapchains at 3379x3590 with 2x MSAA, action
+set attached, and the game runs its attract demo and loads a map without
+crashing. Not yet verified *in the headset* - that is the next test.
+
+## What was done
+
+**1. Stock 7.41 builds on Windows.** MSVC cannot compile it (45 C99
 variable-length arrays across seven renderer files, plus `__attribute__` and
-`strcasecmp` - and editing engine source to satisfy it is exactly what this
-rebase exists to avoid. MinGW GCC 16.1.0 from MSYS2 compiles it untouched.
-Build-file changes only: `cmake_minimum_required` 3.0 -> 3.5, lower-case the
-ARCH string, guard the GCC-only flags, and `-fcommon` (GCC 10 flipped to
-`-fno-common`, which turns tentative definitions like `cvar_t *m_yaw;` in two
-translation units into a duplicate-symbol link error). Verified by running
-`base1` to a connected client.
+`strcasecmp`), and editing engine source to satisfy it is what this rebase
+exists to avoid. MinGW compiles it untouched. Build-file changes only, of which
+the interesting one is `-fcommon`: GCC 10 flipped to `-fno-common`, which turns
+tentative definitions like `cvar_t *m_yaw;` in two translation units into a
+duplicate-symbol link error.
 
-**2. Their engine diff applied with zero conflicts.** All 62 files, 6,936 diff
-lines, +2,746/-870, not one rejected hunk. This is the whole point of the
-rebase: the same diff could not be applied to 8.71pre, which is why it was
-previously hand-picked and approximated, and why every weapon, height and
-movement bug traced back to that.
+**2. Their engine diff applied with zero conflicts** - 62 files, 6,936 lines,
++2,746/-870, not one rejected hunk. This is the whole point of the rebase; the
+same diff could not be applied to 8.71pre. Trap worth remembering: the diff was
+generated between an LF tree and their CRLF tree, so it carries mixed line
+endings and initially failed *every* hunk with "different line endings". The
+worktree is now `core.autocrlf false` / `core.eol lf` and the diff is
+normalised before applying.
 
-One trap worth recording: the diff was generated between an LF tree and their
-CRLF tree, so it carries mixed line endings and initially failed *every* hunk
-with "different line endings". Nothing was wrong with the content. The
-worktree is now `core.autocrlf false` / `core.eol lf`, matching what the git
-blobs already stored, and the diff is normalised to LF before applying.
+**3. Their VR platform layer ported.** `src/vr/vr_surface.c` is the PC
+counterpart of their 1,659-line `Q2VR_SurfaceView.c`, reproducing it closely -
+same action set and bindings, same frame structure, same pose maths, same cvar
+defaults (`vr_worldscale` 26.2467, `vr_weaponscale` 0.56,
+`vr_weapon_pitchadjust` -20.0, and the rest). Note they bind `gripPoseAction`
+to `aim/pose`, not `grip/pose`; that looks like a mistake and is not, and the
+weapon alignment they tuned depends on it.
 
-**3. Their changes compile.** Six platform-seam gaps, none in the VR logic:
-include paths into their Android layout; `u_int32_t` (its absence made
-`VrCommon.h` fail to parse, so every `handleTrackedControllerButton` call
-looked undeclared - one typedef cleared five errors); the GLES float spellings
-`glFrustumf`/`glOrthof`/`glDepthRangef`, now mapped to the desktop double forms
-in `qgl.h`; `hmdType`, which they declared inside `#ifdef __ANDROID__` but pass
-to `re.Init` unconditionally; `cl_maxfps`, which they deleted but still
-reference in the dedicated-server half of `frame.c` that Android never builds;
-and gl3, which their tree never made compile.
+**4. The main loop is theirs.** They commented out the `Qcommon_Mainloop` call
+at the end of `Qcommon_Init` so the platform drives the engine a frame at a
+time, once per eye, inside one `xrBeginFrame`/`xrEndFrame` pair.
 
-`ref_gl1.dll`, `ref_soft.dll` and `game.dll` build.
+## Platform seam - what had to change, and why
 
-## Next: port `Q2VR_SurfaceView.c`
+- **EGL and the Android app thread** become the SDL window and GL context 7.41
+  already creates, bound through `XrGraphicsBindingOpenGLWin32KHR`. GLES
+  becomes desktop GL throughout.
+- **Multisampling.** Theirs resolves through
+  `GL_EXT_multisampled_render_to_texture`, nearly free on a tile-based mobile
+  GPU and absent on desktop. Same sample count reached explicitly: render into
+  a multisample framebuffer, blit into the swapchain image before releasing it.
+- **Two-phase bring-up.** Theirs initialises OpenXR before `Qcommon_Init`; on
+  PC the GL context is created *by* `Qcommon_Init`. Split along the line OpenXR
+  already draws - instance, system and view configuration need no graphics
+  binding; session, swapchains and actions do. Phase one runs from
+  `Qcommon_Init` just before `CL_Init`, so the eye resolution is known when the
+  engine reads the video mode.
+- **Refresh rate** is read, not requested. They pin 72Hz because that is what a
+  Quest runs; on PC it belongs to the runtime and the user's Virtual Desktop or
+  SteamVR settings.
+- **Mirror window** is capped to 900px on its long edge. `viddef` keeps the eye
+  resolution, since that is what the renderer projects and lays the HUD out
+  for; only the desktop window shrinks. Without this it opens a 3379x3590
+  window and buries the desktop.
 
-The client does not link yet. Everything still missing - `VR_Init`,
-`VR_GetMove`, `getVROrigins`, `getFOV`, `TBXR_UpdateControllers`,
-`QuatToYawPitchRoll`, `Android_Vibrate`, and the entire `vr_*` cvar set with
-their tuned defaults - lives in that one 1,659-line file, their platform layer.
+## Four things their tree gets away with and a PC build does not
 
-Roughly lines 181-1468 are portable OpenXR work and should be ported close to
-verbatim: action setup and controller bindings (489-656), controller polling
-(657-726), haptics (727-773), instance and session creation (784-1029), the eye
-loop (1030-1220), `VR_Init` with the cvar defaults (1328-1367), and the pose
-maths and origin accessors (1368-1468).
+All were silent failures, all found by tracing rather than reasoning:
 
-Lines 1469-1659 are Android lifecycle, the app thread and JNI, which the
-existing Windows backend replaces. The EGL context (261-369) becomes the
-WGL/SDL context, the GLES framebuffer helpers (370-488) become desktop GL, and
-`Quest_GetScreenRes`/`Quest_GetRefresh`/`Quest_MessageBox` get PC equivalents.
+- `BASEDIRNAME` was `"Quake2Quest"`, the folder their APK ships data in. A PC
+  install keeps data in `baseq2`, so no paks were found and the engine died
+  inside `Draw_GetPalette` loading `pics/colormap.pcx`, with no message.
+- `IN_Init` was commented out - a Quest has no keyboard or mouse. But
+  `CL_BeginFrame` still calls `IN_Update` every frame, and that dereferences
+  `in_grab`, which only `IN_Init` registers. Segfault on the first frame.
+- `gl1_sdl.c` had every SDL call commented out, since their EGL context exists
+  before the engine starts. Reverted to stock: on PC, SDL *is* the context
+  provider and what OpenXR binds to.
+- `al_driver` defaulted to the Android `libopenal.so`.
 
-Port their structure rather than substituting the OpenXR layer already written
-on the `vr` branch - that layer was built to a different design and its
-constants were re-derived rather than carried over, which is the mistake this
-rebase is correcting.
+Also: `cl_maxfps` deleted but still referenced in the dedicated-server half of
+`frame.c`; `q2ded` needs no-op VR stubs because `sv_game.c` puts VR functions
+in the `game_import_t` table; and their gl3 was never made to compile
+(`GL3_Init` has the old signature, `gl3_mesh.c` calls `qglScalef`). Android
+built none of those paths.
+
+## Next
+
+Test in the headset. Everything after that is comparison against the
+standalone build.
 
 ## Notes
 
-- gl3 is `option(GL3_SUPPORT ... OFF)`. Their VR work is in **gl1**; the first
-  attempt built the VR path on gl3, a renderer they never touched.
+- gl3 is `option(GL3_SUPPORT ... OFF)` and `vid_renderer` defaults to gl1.
+  Their VR work is in **gl1**; the first attempt built the VR path on gl3, a
+  renderer they never touched.
+- The release directory is self-contained - SDL2, the OpenXR loader and the
+  three MinGW runtime DLLs it pulls in are copied next to the binary.
 - The old `vr` branch keeps the previous attempt. Divergences to leave behind:
   `vr_seated`, `vr_hud_scale`, `vr_turn_speed`, `vr_roomscale`, `vr_smoothturn`
   as a mode switch, the scissor comfort aperture, the beam laser sight, the

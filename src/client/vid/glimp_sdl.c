@@ -291,6 +291,39 @@ GLimp_InitGraphics(int fullscreen, int *pwidth, int *pheight)
 		flags |= fs_flag;
 	}
 
+	/*
+	 * In VR the requested size is the per-eye buffer, which is much larger
+	 * than the monitor - a Quest 3 through VDXR asks for about 3379x3590. On
+	 * Android that was fine, because the "window" was the headset surface and
+	 * there was no desktop. Here it would open a window bigger than the screen
+	 * and bury everything else on the desktop.
+	 *
+	 * viddef keeps the eye resolution, because that is what the renderer
+	 * projects and lays the HUD out for, and it matches the eye framebuffer
+	 * the frame loop renders into. Only the desktop window shrinks; it is just
+	 * a mirror. Aspect is preserved so the mirror is not distorted.
+	 */
+	{
+		int vrWidth = 0;
+		int vrHeight = 0;
+
+		TBXR_GetEyeResolution(&vrWidth, &vrHeight);
+
+		if (vrWidth > 0 && vrHeight > 0 && width == vrWidth && height == vrHeight)
+		{
+			const int maxDimension = 900;
+			int longest = (width > height) ? width : height;
+
+			if (longest > maxDimension)
+			{
+				width = (width * maxDimension) / longest;
+				height = (height * maxDimension) / longest;
+				Com_Printf("VR: mirror window %dx%d (eye buffer stays %dx%d)\n",
+						width, height, vrWidth, vrHeight);
+			}
+		}
+	}
+
 	/* Mkay, now the hard work. Let's create the window. */
 	cvar_t *gl_msaa_samples = Cvar_Get("gl_msaa_samples", "0", CVAR_ARCHIVE);
 
