@@ -661,6 +661,17 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 		endif()
 	endforeach()
 
+	# OpenAL is loaded by name at runtime, and DEFAULT_OPENAL_DRIVER on Windows
+	# is "openal32.dll". MSYS2 ships the same library as libopenal-1.dll, so it
+	# is copied under the name the engine asks for. Without this the load fails
+	# and the game runs silent.
+	if(EXISTS "${_mingw_bindir}/libopenal-1.dll")
+		add_custom_command(TARGET yquake2 POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different
+				"${_mingw_bindir}/libopenal-1.dll"
+				"${CMAKE_BINARY_DIR}/release/openal32.dll")
+	endif()
+
 	# Wrapper for the Windows binary
 	add_executable(quake2 ${Wrapper-Source})
 	set_target_properties(quake2 PROPERTIES
