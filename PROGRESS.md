@@ -54,9 +54,48 @@ remains is the one part of the comparison that is not the same pipeline: they
 render natively on the headset, this reaches it through Virtual Desktop's
 encode and decode. Try VD's own colour settings before touching render code.
 
-## Next
+## Builds
 
-PC options, on top of the tag rather than instead of it: render resolution
+Two tags, two packaged folders, both self-contained and portable:
+
+| tag | package | what it is |
+|---|---|---|
+| `quake2-vr-1to1` | `E:\Games\Quake II VR (1to1)` | their game on PC, nothing added |
+| `quake2-vr-pc` | `E:\Games\Quake II VR (PC)` | the above plus a PC Options screen and the frustum fix |
+
+`tools/package-release.sh <dir>` builds either. The launcher passes
+`-portable`, so config, saves and screenshots live inside the folder: backing
+it up backs up everything, and copying it to another PC carries the settings.
+
+**PC Options** (Options -> pc options) - every default is their value, so an
+untouched install renders exactly as the standalone does:
+
+- `vr_supersampling` 0.5-2.0, default their 1.1. The main lever on crispness,
+  and a multiplier of what the runtime asks for - so the screen shows the
+  resulting per-eye pixel count, since the same number means different things
+  on different headsets and VD quality settings.
+- `vr_msaa` off/2x/4x/8x, default their 2. `NUM_MULTI_SAMPLES` was hardcoded,
+  reasonable on a tile-based mobile GPU where multisampling is nearly free.
+- `r_farsee`, default their off. A Quest concession.
+
+Both buffer settings are fixed when the eye framebuffers are created, so the
+screen says "restart to apply".
+
+### One fix that belongs in both
+
+`R_SetFrustum` culled against `r_newrefdef.fov_x/fov_y` - the player state's
+symmetric 90 degrees - while `R_SetupGL` projected with OpenXR's wider,
+asymmetric per-eye FOV. Surfaces inside the rendered image were culled, so
+world geometry went missing at the edge of vision and popped in when turning.
+Team Beef left it stock and it does not show on a Quest, where the per-eye FOV
+is close to 90; through VDXR it does.
+
+It landed after the `quake2-vr-1to1` tag, so **the packaged 1:1 folder does not
+have it**. It is a platform correctness fix rather than a feature, so it
+arguably belongs there too - repackaging that folder from a branch carrying
+just this fix is a one-command job if wanted.
+
+## Next: render resolution
 (`vr_supersampling` already exists), MSAA level (their `NUM_MULTI_SAMPLES` is a
 hardcoded 2, tuned for a mobile tile-based GPU), and view distance (their
 config sets `r_farsee 0`, a Quest concession). Leave every existing option and
