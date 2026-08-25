@@ -2106,7 +2106,7 @@ SCR_GetDefaultScale(void)
 	 * a different size is wanted.
 	 */
 	{
-		const float uiReferenceWidth = 1500.0f;
+		const float uiReferenceWidth = 750.0f;
 		float scale = viddef.width / uiReferenceWidth;
 
 		if (scale < 1.0f)
