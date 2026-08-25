@@ -1122,6 +1122,12 @@ static menulist_s s_pcoptions_farsee_box;
 static menulist_s s_pcoptions_action;
 static menuseparator_s s_pcoptions_note1;
 static menuseparator_s s_pcoptions_note2;
+static menuseparator_s s_pcoptions_ssvalue;
+/* File scope so the slider callback can rewrite it as the value moves;
+   a menu slider draws a bar with no number, which left no way to tell
+   1.1 from 2.0. */
+static char s_pcoptions_ss_text[64];
+static char s_pcoptions_eye_text[64];
 
 static void
 CrosshairFunc(void *unused)
@@ -1737,9 +1743,19 @@ NeedsRestartPopup(void)
 }
 
 static void
+UpdateSupersamplingText(float value)
+{
+    Com_sprintf(s_pcoptions_ss_text, sizeof(s_pcoptions_ss_text),
+            "= %.1fx  (their build: 1.1x)", value);
+}
+
+static void
 SupersamplingFunc(void *unused)
 {
-    Cvar_SetValue("vr_supersampling", s_pcoptions_supersampling_slider.curvalue / 10.0f);
+    float value = s_pcoptions_supersampling_slider.curvalue / 10.0f;
+
+    Cvar_SetValue("vr_supersampling", value);
+    UpdateSupersamplingText(value);
     NeedsRestartPopup();
 }
 
@@ -1780,6 +1796,12 @@ PCOptions_MenuInit(void)
     s_pcoptions_supersampling_slider.maxvalue = 20;
     s_pcoptions_supersampling_slider.curvalue = ss->value * 10;
 
+    UpdateSupersamplingText(ss->value);
+    s_pcoptions_ssvalue.generic.type = MTYPE_SEPARATOR;
+    s_pcoptions_ssvalue.generic.x = 0;
+    s_pcoptions_ssvalue.generic.y = (y += 10);
+    s_pcoptions_ssvalue.generic.name = s_pcoptions_ss_text;
+
     s_pcoptions_msaa_box.generic.type = MTYPE_SPINCONTROL;
     s_pcoptions_msaa_box.generic.x = 0;
     s_pcoptions_msaa_box.generic.y = (y += 10);
@@ -1798,7 +1820,22 @@ PCOptions_MenuInit(void)
     s_pcoptions_farsee_box.generic.name = "extended view distance";
     s_pcoptions_farsee_box.generic.callback = FarseeFunc;
     s_pcoptions_farsee_box.itemnames = pc_yesno_names;
-    s_pcoptions_farsee_box.curvalue = (farsee->value != 0);
+
+    /*
+     * r_farsee is CVAR_LATCH, so Cvar_SetValue parks the new setting in
+     * latched_string and leaves ->value alone until a restart. Reading ->value
+     * here showed the pre-restart setting, so the option appeared to reset
+     * itself every time this screen was reopened even though the change had
+     * been stored correctly.
+     */
+    if (farsee->latched_string)
+    {
+        s_pcoptions_farsee_box.curvalue = (atof(farsee->latched_string) != 0);
+    }
+    else
+    {
+        s_pcoptions_farsee_box.curvalue = (farsee->value != 0);
+    }
 
     /*
      * Notes as separators rather than M_Print in the draw function. An earlier
@@ -1812,7 +1849,6 @@ PCOptions_MenuInit(void)
     s_pcoptions_note1.generic.name = "restart to apply";
 
     {
-        static char eyeNote[64];
         int eyeWidth = 0;
         int eyeHeight = 0;
 
@@ -1824,21 +1860,23 @@ PCOptions_MenuInit(void)
                for, so the same number means different things on different
                headsets and streaming settings. Showing the pixel count makes
                the cost of raising it visible before the frame rate drops. */
-            Com_sprintf(eyeNote, sizeof(eyeNote), "now %dx%d per eye",
-                    eyeWidth, eyeHeight);
+            Com_sprintf(s_pcoptions_eye_text, sizeof(s_pcoptions_eye_text),
+                    "now %dx%d per eye", eyeWidth, eyeHeight);
         }
         else
         {
-            Com_sprintf(eyeNote, sizeof(eyeNote), "flatscreen - no headset");
+            Com_sprintf(s_pcoptions_eye_text, sizeof(s_pcoptions_eye_text),
+                    "flatscreen - no headset");
         }
 
         s_pcoptions_note2.generic.type = MTYPE_SEPARATOR;
         s_pcoptions_note2.generic.x = 0;
         s_pcoptions_note2.generic.y = (y += 10);
-        s_pcoptions_note2.generic.name = eyeNote;
+        s_pcoptions_note2.generic.name = s_pcoptions_eye_text;
     }
 
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_supersampling_slider);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_ssvalue);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_msaa_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_farsee_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note1);
