@@ -2,123 +2,68 @@
 
 ---
 
-# REBASE STATUS - updated 2026-08-24
+# STATUS: 1:1 PORT COMPLETE - tag `quake2-vr-1to1`
 
-Branch `vr-741-base` in the `Quake2VR-741` worktree.
+Verified in the headset on a Quest 3 over Virtual Desktop. Stereo, head
+tracking, controllers, movement, snap and smooth turning, weapon alignment,
+laser sight, HUD and menus, sound and music, save/load, item wheels, comfort
+vignette, haptics, two-handed stabilisation and the new-game cinematic all
+work. 90fps at 3379x3590 per eye.
 
-## Where it is
+## Fidelity, measured
 
-**The engine runs inside the OpenXR frame loop.** Verified against VDXR on a
-Quest 3: session created, both eye swapchains at 3379x3590 with 2x MSAA, action
-set attached, and the game runs its attract demo and loads a map without
-crashing. Not yet verified *in the headset* - that is the next test.
+- Their engine changeset applied **verbatim**: 62 files, 6,936 lines, **zero
+  rejected hunks**. That is what rebasing onto 7.41 - the exact version they
+  forked - bought. The same diff could not be applied to 8.71pre, which is why
+  the first attempt hand-picked it and why every weapon, height and movement
+  bug traced back to that.
+- Their VR layer is **byte-identical bar include paths**. `VrInputCommon.c`,
+  `mathlib.c`, `matrixlib.c`, `VrInput.h`, `VrCvars.h`: zero differences.
+  `VrInputDefault.c` carries one documented correction.
+- Their **cvar set matches exactly** - diffing their shipped `config.cfg`
+  against this build shows no VR option missing.
+- Their **game data is installed and required**, copied by the build.
 
-## What was done
+## What the platform seam actually was
 
-**1. Stock 7.41 builds on Windows.** MSVC cannot compile it (45 C99
-variable-length arrays across seven renderer files, plus `__attribute__` and
-`strcasecmp`), and editing engine source to satisfy it is what this rebase
-exists to avoid. MinGW compiles it untouched. Build-file changes only, of which
-the interesting one is `-fcommon`: GCC 10 flipped to `-fno-common`, which turns
-tentative definitions like `cvar_t *m_yaw;` in two translation units into a
-duplicate-symbol link error.
+Almost every problem in this port was configuration or a platform assumption
+that only holds on Android - not a fault in their VR code. Worth remembering
+for the remaining ports:
 
-**2. Their engine diff applied with zero conflicts** - 62 files, 6,936 lines,
-+2,746/-870, not one rejected hunk. This is the whole point of the rebase; the
-same diff could not be applied to 8.71pre. Trap worth remembering: the diff was
-generated between an LF tree and their CRLF tree, so it carries mixed line
-endings and initially failed *every* hunk with "different line endings". The
-worktree is now `core.autocrlf false` / `core.eol lf` and the diff is
-normalised before applying.
+| Symptom | Cause |
+|---|---|
+| Double vision | `gl1_stereo 8` set by their Android launcher's command line, not in source |
+| 30fps | Desktop vsync blocking once per eye; they have no desktop window |
+| No sound | MSYS2 names the OpenAL library differently than Windows expects |
+| Tiny UI | 2D scale hardcoded to a constant correct only at their eye-buffer width |
+| No paks found | `BASEDIRNAME` is their APK's folder name, not `baseq2` |
+| Segfault on frame 1 | `IN_Init` commented out - a Quest has no keyboard or mouse |
+| World looked low detail | `pak6.pak` HD textures missing, and inert without `gl_retexturing 1` |
+| Weapon low detail, had an arm | `pak99.pak` missing - their `v_*` models have no arm |
+| Cinematic cut off after 1s | `BUTTON_ANY` from synthesised controller key events |
+| Brightness slider did nothing | It drives `vid_gamma`, inert when rendering to an FBO |
 
-**3. Their VR platform layer ported.** `src/vr/vr_surface.c` is the PC
-counterpart of their 1,659-line `Q2VR_SurfaceView.c`, reproducing it closely -
-same action set and bindings, same frame structure, same pose maths, same cvar
-defaults (`vr_worldscale` 26.2467, `vr_weaponscale` 0.56,
-`vr_weapon_pitchadjust` -20.0, and the rest). Note they bind `gripPoseAction`
-to `aim/pose`, not `grip/pose`; that looks like a mistake and is not, and the
-weapon alignment they tuned depends on it.
+## Open, and outside the port
 
-**4. The main loop is theirs.** They commented out the `Qcommon_Mainloop` call
-at the end of `Qcommon_Init` so the platform drives the engine a frame at a
-time, once per eye, inside one `xrBeginFrame`/`xrEndFrame` pair.
+The standalone renders darker. Engine-side brightness is provably identical -
+`gammatable` is identity in both (that is stock 7.41, not their change),
+intensity is 3.7 in both, and no lighting cvar differs. Two changes to the
+sRGB resolve produced no visible difference in either direction, which is what
+happens when the driver treats a same-encoding blit as a straight copy. What
+remains is the one part of the comparison that is not the same pipeline: they
+render natively on the headset, this reaches it through Virtual Desktop's
+encode and decode. Try VD's own colour settings before touching render code.
 
-## Platform seam - what had to change, and why
+## Next
 
-- **EGL and the Android app thread** become the SDL window and GL context 7.41
-  already creates, bound through `XrGraphicsBindingOpenGLWin32KHR`. GLES
-  becomes desktop GL throughout.
-- **Multisampling.** Theirs resolves through
-  `GL_EXT_multisampled_render_to_texture`, nearly free on a tile-based mobile
-  GPU and absent on desktop. Same sample count reached explicitly: render into
-  a multisample framebuffer, blit into the swapchain image before releasing it.
-- **Two-phase bring-up.** Theirs initialises OpenXR before `Qcommon_Init`; on
-  PC the GL context is created *by* `Qcommon_Init`. Split along the line OpenXR
-  already draws - instance, system and view configuration need no graphics
-  binding; session, swapchains and actions do. Phase one runs from
-  `Qcommon_Init` just before `CL_Init`, so the eye resolution is known when the
-  engine reads the video mode.
-- **Refresh rate** is read, not requested. They pin 72Hz because that is what a
-  Quest runs; on PC it belongs to the runtime and the user's Virtual Desktop or
-  SteamVR settings.
-- **Mirror window** is capped to 900px on its long edge. `viddef` keeps the eye
-  resolution, since that is what the renderer projects and lays the HUD out
-  for; only the desktop window shrinks. Without this it opens a 3379x3590
-  window and buries the desktop.
+PC options, on top of the tag rather than instead of it: render resolution
+(`vr_supersampling` already exists), MSAA level (their `NUM_MULTI_SAMPLES` is a
+hardcoded 2, tuned for a mobile tile-based GPU), and view distance (their
+config sets `r_farsee 0`, a Quest concession). Leave every existing option and
+default exactly as they set them, so the 1:1 build stays reachable.
 
-## Four things their tree gets away with and a PC build does not
-
-All were silent failures, all found by tracing rather than reasoning:
-
-- `BASEDIRNAME` was `"Quake2Quest"`, the folder their APK ships data in. A PC
-  install keeps data in `baseq2`, so no paks were found and the engine died
-  inside `Draw_GetPalette` loading `pics/colormap.pcx`, with no message.
-- `IN_Init` was commented out - a Quest has no keyboard or mouse. But
-  `CL_BeginFrame` still calls `IN_Update` every frame, and that dereferences
-  `in_grab`, which only `IN_Init` registers. Segfault on the first frame.
-- `gl1_sdl.c` had every SDL call commented out, since their EGL context exists
-  before the engine starts. Reverted to stock: on PC, SDL *is* the context
-  provider and what OpenXR binds to.
-- `al_driver` defaulted to the Android `libopenal.so`.
-
-Also: `cl_maxfps` deleted but still referenced in the dedicated-server half of
-`frame.c`; `q2ded` needs no-op VR stubs because `sv_game.c` puts VR functions
-in the `game_import_t` table; and their gl3 was never made to compile
-(`GL3_Init` has the old signature, `gl3_mesh.c` calls `qglScalef`). Android
-built none of those paths.
-
-## Confirmed working in the headset
-
-Stereo fuses, head tracking, controllers, movement, snap turn, sound, HUD and
-menu, 90fps. Verified by Miles on a Quest 3 over Virtual Desktop.
-
-Four issues found in that first session, all fixed:
-
-- **Double vision.** `gl1_stereo` defaults to 0. Their Android launcher passes
-  `+set gl1_stereo 8` (STEREO_OPENXR) on the command line it builds; without it
-  the renderer ignores the per-eye camera separation `cl_screen.c` computes
-  from `vr_worldscale`, drawing both eyes from the same point while the
-  compositor is told they came from different ones. Phase one now sets it,
-  along with the `r_mode -1` / `r_customwidth` / `r_customheight` from the same
-  command line.
-- **30fps.** `RI_EndFrame` swaps the desktop window, which blocks on the
-  monitor's vsync, and it runs once per eye - so a 60Hz desktop pins the
-  headset to exactly 30. Their `RI_EndFrame` is a no-op because Android has no
-  desktop window; reverting `gl1_sdl.c` to stock brought the blocking swap
-  back. `r_vsync` is now forced off in VR, since the compositor paces us
-  through `xrWaitFrame`. Measured 90fps.
-- **No sound.** `DEFAULT_OPENAL_DRIVER` is `openal32.dll` on Windows; MSYS2
-  ships the same library as `libopenal-1.dll`. Copied under the expected name.
-- **Tiny UI.** They replaced upstream's resolution-derived 2D scale with a flat
-  `return 1` in `SCR_GetDefaultScale`, correct only at their eye-buffer width.
-  Now scaled against a reference width, set by eye at 4.51x here.
-
-Also fixed: the weapon jumped sideways for one frame on snap turn, because
-`HandleInput_Default` places the weapon from the previous frame's viewangles
-while `snapTurn` is not updated until 300 lines later. Corrected with a delta
-measured inside the call. **The first attempt at this broke tracking outright**
-by assuming `cl.refdef.viewangles[YAW] - hmdorientation[YAW]` equals `snapTurn`
-- see [[vr-port-verify-before-asking]].
+Then VRaze, then Prey. Miles's Quest ports and APKs are at
+`E:\Games\Quest Ports`.
 
 ## Game data: their shipped standalone, not just their repo
 
