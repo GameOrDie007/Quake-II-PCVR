@@ -2083,7 +2083,33 @@ SCR_GetDefaultScale(void)
 	return i;
 */
 
-    return 1;
+	/*
+	 * Team Beef replaced the resolution-derived scale above with a flat 1. That
+	 * is right for them: a Quest 3 eye buffer is around 2270 wide after their
+	 * 1.1 supersample, and at that size a scale of 1 gives the HUD and menu the
+	 * proportions they tuned.
+	 *
+	 * It does not transfer, because the constant is only correct for one
+	 * resolution. A PC headset through VDXR asks for 3379 wide, where the same
+	 * 1 leaves the UI at about two thirds of the apparent size - the eye buffer
+	 * covers roughly the same field of view either way, so what the eye sees is
+	 * the fraction of the buffer the UI occupies.
+	 *
+	 * Scaling against their reference width restores that fraction, which is
+	 * what reproduces their build rather than upstream's much larger
+	 * 640/240-derived scale.
+	 */
+	{
+		const float teamBeefEyeWidth = 2270.0f;
+		float scale = viddef.width / teamBeefEyeWidth;
+
+		if (scale < 1.0f)
+		{
+			scale = 1.0f;
+		}
+
+		return scale;
+	}
 }
 
 void
