@@ -100,6 +100,10 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	//Get the cvar
     sv_cheats = Cvar_Get("cheats", "0", CVAR_ARCHIVE);
 
+	/* World-yaw offset the weapon placement below is built with. Re-read at the
+	   end of this function to correct the one-frame snap-turn lag; see there. */
+	float vr_weaponYawOffsetUsed = 0.0f;
+
     static qboolean dominantGripPushed = false;
 	static float dominantGripPushTime = 0.0f;
     static qboolean inventoryManagementMode = false;
@@ -186,6 +190,7 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             weaponoffset[2] = pDominantTracking->HeadPose.Pose.Position.z - hmdPosition[2];
 
 			{
+				vr_weaponYawOffsetUsed = cl.refdef.viewangles[YAW] - hmdorientation[YAW];
 				vec2_t v;
 				rotateAboutOrigin(-weaponoffset[0], weaponoffset[2], (cl.refdef.viewangles[YAW] - hmdorientation[YAW]), v);
 				weaponoffset[0] = v[0];
@@ -528,4 +533,39 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             }
         }
     }
+
+	/*
+	 * Snap-turn correction. The weapon is placed near the top of this function
+	 * using cl.refdef.viewangles, which the client last wrote while rendering the
+	 * previous frame - but snapTurn is not updated until the joystick handling
+	 * further down. So on the frame a snap turn happens, the view rotates by
+	 * vr_snapturn_angle while the weapon still carries the old rotation, and the
+	 * gun appears thrown out to one side for exactly one frame before it catches
+	 * up. Turning right shows it on the left.
+	 *
+	 * This is in their code too - the ordering is the same on Quest - and at
+	 * 72Hz it is a single-frame flash. It reads as a glitch rather than as
+	 * latency, so it is corrected here rather than reproduced.
+	 *
+	 * The correction only does anything on the frame snapTurn actually changes:
+	 * with no turn the delta is zero and the weapon placement they tuned is left
+	 * exactly as it was.
+	 */
+	{
+		float yawOffsetNow = snapTurn;
+		float delta = yawOffsetNow - vr_weaponYawOffsetUsed;
+
+		while (delta > 180.0f) delta -= 360.0f;
+		while (delta < -180.0f) delta += 360.0f;
+
+		if (fabsf(delta) > 0.01f)
+		{
+			vec2_t v;
+
+			rotateAboutOrigin(-weaponoffset[0], weaponoffset[2], delta, v);
+			weaponoffset[0] = v[0];
+			weaponoffset[2] = v[1];
+			weaponangles[YAW] += delta;
+		}
+	}
 }

@@ -2095,13 +2095,19 @@ SCR_GetDefaultScale(void)
 	 * covers roughly the same field of view either way, so what the eye sees is
 	 * the fraction of the buffer the UI occupies.
 	 *
-	 * Scaling against their reference width restores that fraction, which is
-	 * what reproduces their build rather than upstream's much larger
-	 * 640/240-derived scale.
+	 * Scaling against a reference width restores that fraction. The reference
+	 * was set by eye against the standalone rather than calculated: a first
+	 * attempt used their approximate eye-buffer width, which came out around
+	 * two thirds of the size that actually reads well in the headset.
+	 *
+	 * Deliberately not a revert to upstream's 640/240-derived scale, which
+	 * would give about 5 here and make the UI far larger than their build. The
+	 * r_hudscale, r_menuscale and r_consolescale cvars still override this if
+	 * a different size is wanted.
 	 */
 	{
-		const float teamBeefEyeWidth = 2270.0f;
-		float scale = viddef.width / teamBeefEyeWidth;
+		const float uiReferenceWidth = 1500.0f;
+		float scale = viddef.width / uiReferenceWidth;
 
 		if (scale < 1.0f)
 		{
