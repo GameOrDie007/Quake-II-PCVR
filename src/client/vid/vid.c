@@ -333,9 +333,13 @@ VID_ShutdownRenderer(void)
 
 #ifdef __ANDROID__
 	int yquake2Renderer = 0; // 0 = soft, 1 = gl1, 3 = gl3
-
-	extern int hmdType;
 #endif
+
+	/* Team Beef declared this inside their __ANDROID__ block, but re.Init is
+	   called with it unconditionally below, so the PC build needs it too. It
+	   selects a per-headset texture intensity in R_InitImages. Defined and set
+	   from the OpenXR runtime name in src/vr/vr_platform.c. */
+	extern int hmdType;
 
 /*
  * Loads and initializes a renderer.

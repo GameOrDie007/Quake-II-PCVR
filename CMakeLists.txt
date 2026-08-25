@@ -104,6 +104,7 @@ set(COMMON_SRC_DIR ${SOURCE_DIR}/common)
 set(GAME_SRC_DIR ${SOURCE_DIR}/game)
 set(SERVER_SRC_DIR ${SOURCE_DIR}/server)
 set(CLIENT_SRC_DIR ${SOURCE_DIR}/client)
+set(VR_SRC_DIR ${SOURCE_DIR}/vr)
 set(REF_SRC_DIR ${SOURCE_DIR}/client/refresh)
 
 # Operating system.
@@ -408,6 +409,15 @@ set(Client-Source
 	${SERVER_SRC_DIR}/sv_send.c
 	${SERVER_SRC_DIR}/sv_user.c
 	${SERVER_SRC_DIR}/sv_world.c
+
+	# Team Beef's VR layer, ported unchanged from Quake2Quest. It lives outside
+	# quake2/src in their Android project, so it is absent from the engine diff
+	# and has to be listed here explicitly.
+	${VR_SRC_DIR}/vr_platform.c
+	${VR_SRC_DIR}/teambeef/VrInputCommon.c
+	${VR_SRC_DIR}/teambeef/VrInputDefault.c
+	${VR_SRC_DIR}/teambeef/mathlib.c
+	${VR_SRC_DIR}/teambeef/matrixlib.c
 	)
 
 set(Client-Header
@@ -665,14 +675,26 @@ set_target_properties(ref_gl1 PROPERTIES
 target_link_libraries(ref_gl1 ${yquake2LinkerFlags} ${yquake2OpenGLLinkerFlags} ${yquake2SDLLinkerFlags})
 
 # Build the GL3 dynamic library
-add_library(ref_gl3 MODULE ${GL3-Source} ${GL3-Header} ${REF-Platform-Specific-Source})
-set_target_properties(ref_gl3 PROPERTIES
-		PREFIX ""
-		LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release
-		RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release
-		SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX}
-		)
-target_link_libraries(ref_gl3 ${yquake2LinkerFlags} ${yquake2SDLLinkerFlags})
+#
+# Off by default. Quake2Quest ships gl1 only, and their gl3 changes were never
+# made to compile: GL3_Init still has the old no-argument signature the rest of
+# their tree moved away from, and gl3_mesh.c calls qglScalef, which is a
+# fixed-function entry point gl3 does not have. Android only ever built gl1, so
+# neither was caught. Finishing gl3 would mean writing weapon-scaling code they
+# never wrote, for a renderer their VR path does not use, so it stays disabled
+# until the port is complete. gl1 carries both the VR and the flatscreen path.
+option(GL3_SUPPORT "Build the GL3 renderer (incomplete in the VR tree)" OFF)
+
+if(GL3_SUPPORT)
+	add_library(ref_gl3 MODULE ${GL3-Source} ${GL3-Header} ${REF-Platform-Specific-Source})
+	set_target_properties(ref_gl3 PROPERTIES
+			PREFIX ""
+			LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release
+			RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release
+			SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX}
+			)
+	target_link_libraries(ref_gl3 ${yquake2LinkerFlags} ${yquake2SDLLinkerFlags})
+endif()
 
 # Build the soft renderer dynamic library
 add_library(ref_soft MODULE ${SOFT-Source} ${SOFT-Header} ${REF-Platform-Specific-Source})

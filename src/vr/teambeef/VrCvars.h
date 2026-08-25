@@ -1,0 +1,17 @@
+extern cvar_t	*vr_snapturn_angle;
+extern cvar_t	*vr_turn_deadzone;
+extern cvar_t	*vr_walkdirection;
+extern cvar_t	*vr_weapon_pitchadjust;
+extern cvar_t	*vr_lasersight;
+extern cvar_t	*vr_control_scheme;
+extern cvar_t	*vr_height_adjust;
+extern cvar_t	*vr_worldscale;
+extern cvar_t	*vr_weaponscale;
+extern cvar_t	*vr_weapon_stabilised;
+extern cvar_t	*vr_comfort_mask;
+extern cvar_t	*vr_framerate;
+extern cvar_t   *vr_use_wheels;
+extern cvar_t   *vr_smoothturn;
+extern cvar_t   *vr_jump_sound;
+extern char     **refresh_names;
+extern float    *refresh_values;

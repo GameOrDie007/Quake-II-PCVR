@@ -33,7 +33,7 @@
 #include "../header/client.h"
 #include "../sound/header/local.h"
 #include "header/qmenu.h"
-#include "../../../../Quake2VR/VrCvars.h"
+#include "../../vr/teambeef/VrCvars.h"
 
 static int m_main_cursor;
 

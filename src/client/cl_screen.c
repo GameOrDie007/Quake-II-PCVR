@@ -27,7 +27,7 @@
 
 #include <stdbool.h>
 #include "header/client.h"
-#include "../../../Quake2VR/VrCvars.h"
+#include "../vr/teambeef/VrCvars.h"
 
 float scr_con_current; /* aproaches scr_conlines at scr_conspeed */
 float scr_conlines; /* 0.0 to 1.0 lines of console to display */

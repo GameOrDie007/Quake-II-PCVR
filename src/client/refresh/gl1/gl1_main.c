@@ -26,7 +26,6 @@
 
 #include "header/local.h"
 
-#include <src/gl/loader.h>
 
 
 #define NUM_BEAM_SEGS 6

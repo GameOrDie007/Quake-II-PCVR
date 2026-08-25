@@ -51,6 +51,15 @@
 
 #else
 #include <GL/gl.h>
+
+/* Team Beef changed their gl1 call sites to the OpenGL ES spellings of these
+   three functions, which the USE_GLES1 branch above supplies natively. ES
+   dropped the double-precision forms and kept only the "f" variants; desktop
+   GL is the other way round. Mapping the names back here leaves their call
+   sites untouched. */
+#define glFrustumf(l, r, b, t, n, f)	glFrustum((l), (r), (b), (t), (n), (f))
+#define glOrthof(l, r, b, t, n, f)	glOrtho((l), (r), (b), (t), (n), (f))
+#define glDepthRangef(n, f)		glDepthRange((n), (f))
 #endif
 
 #endif
