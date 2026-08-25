@@ -112,6 +112,25 @@ BrightnessCallback(void *s)
 {
 	menuslider_s *slider = (menuslider_s *)s;
 
+	/*
+	 * In VR this has to drive gl1_overbrightbits, exactly as their Android
+	 * branch below does, because the vid_gamma path is inert here: gamma is
+	 * applied by RI_UpdateGamma through SDL_SetWindowGammaRamp, which sets the
+	 * desktop window's hardware ramp - and nothing is rendered to that window
+	 * in VR. The slider moved and nothing happened.
+	 *
+	 * Their condition is "Android and the gl1 renderer", which on their side
+	 * means the same thing this does: a gl1 build whose output never passes
+	 * through a hardware gamma ramp. Same formula, so the slider maps to the
+	 * same values theirs does.
+	 */
+	if (TBXR_IsRunning())
+	{
+		float overbright = (slider->curvalue / 7.f) + 1;
+		Cvar_SetValue("gl1_overbrightbits", overbright);
+		return;
+	}
+
 #ifdef __ANDROID__
     if( yquake2Renderer == 1 ) // GLES1 use overbright for brightness
     {
