@@ -175,9 +175,16 @@ Qcommon_Mainloop(void)
 		 * Flatscreen is one eye, so the sequence is the VR one with a single
 		 * pass through the middle.
 		 */
+#ifdef DEDICATED_ONLY
+		/* The dedicated server keeps the original single Qcommon_Frame, which
+		   still takes a duration - the split exists for per-eye rendering and
+		   a headless server has no eyes. */
+		Qcommon_Frame(newtime - oldtime);
+#else
 		Qcommon_BeginFrame(newtime - oldtime);
 		Qcommon_Frame(0);
 		Qcommon_EndFrame(newtime - oldtime);
+#endif
 		oldtime = newtime;
 	}
 }
