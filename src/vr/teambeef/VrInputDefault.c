@@ -547,6 +547,12 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	 * 72Hz it is a single-frame flash. It reads as a glitch rather than as
 	 * latency, so it is corrected here rather than reproduced.
 	 *
+	 * Snap turning only. Smooth turning changes snapTurn a little on every
+	 * frame rather than jumping once, so there is no discontinuity to cancel -
+	 * and applying the correction anyway made the weapon fight the view
+	 * instead, leaving it hanging in place through a continuous turn. The
+	 * artifact this fixes is specifically the single-frame jump of a snap.
+	 *
 	 * The delta is measured strictly within this call - snapTurn on entry
 	 * against snapTurn once the joystick handling has finished - so it is the
 	 * amount the view is about to rotate that the weapon has not accounted for.
@@ -560,6 +566,7 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	 * untouched the delta is exactly zero and their tuned placement is
 	 * arithmetically unchanged.
 	 */
+	if (vr_smoothturn->value == 0.0f)
 	{
 		float delta = snapTurn - snapTurnAtEntry;
 
