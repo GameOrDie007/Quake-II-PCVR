@@ -105,6 +105,22 @@ set(GAME_SRC_DIR ${SOURCE_DIR}/game)
 set(SERVER_SRC_DIR ${SOURCE_DIR}/server)
 set(CLIENT_SRC_DIR ${SOURCE_DIR}/client)
 set(VR_SRC_DIR ${SOURCE_DIR}/vr)
+
+# OpenXR
+#
+# MSYS2 ships both the headers and libopenxr_loader.dll.a, so the loader is
+# taken from the toolchain rather than built from source. The loader version
+# does not have to match the runtime - VDXR, SteamVR and the Oculus runtime are
+# all reached through the same loader - but note that vr_surface.c asks for
+# apiVersion 1.0 deliberately, because VDXR rejects 1.1.
+find_path(OPENXR_INCLUDE_DIR openxr/openxr.h)
+find_library(OPENXR_LOADER_LIBRARY NAMES openxr_loader)
+
+if(OPENXR_INCLUDE_DIR AND OPENXR_LOADER_LIBRARY)
+	message(STATUS "Found OpenXR loader: ${OPENXR_LOADER_LIBRARY}")
+else()
+	message(FATAL_ERROR "OpenXR loader not found. On MSYS2 install mingw-w64-x86_64-openxr-loader.")
+endif()
 set(REF_SRC_DIR ${SOURCE_DIR}/client/refresh)
 
 # Operating system.
@@ -414,6 +430,7 @@ set(Client-Source
 	# quake2/src in their Android project, so it is absent from the engine diff
 	# and has to be listed here explicitly.
 	${VR_SRC_DIR}/vr_platform.c
+	${VR_SRC_DIR}/vr_surface.c
 	${VR_SRC_DIR}/teambeef/VrInputCommon.c
 	${VR_SRC_DIR}/teambeef/VrInputDefault.c
 	${VR_SRC_DIR}/teambeef/mathlib.c
@@ -624,7 +641,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 			RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release
 			)
 	target_link_libraries(yquake2 ${yquake2LinkerFlags} ${yquake2ClientLinkerFlags}
-			${yquake2SDLLinkerFlags} ${yquake2ZLibLinkerFlags} ws2_32 winmm)
+			${yquake2SDLLinkerFlags} ${yquake2ZLibLinkerFlags} ws2_32 winmm
+			${OPENXR_LOADER_LIBRARY} opengl32)
+	target_include_directories(yquake2 PRIVATE ${OPENXR_INCLUDE_DIR})
 
 	# Wrapper for the Windows binary
 	add_executable(quake2 ${Wrapper-Source})
@@ -642,8 +661,11 @@ else()
 endif()
 
 # Quake 2 Dedicated Server
+# The VR stubs are here because Team Beef's changes call the VR layer from
+# frame.c and sv_game.c, both of which the dedicated server compiles. See
+# src/vr/vr_stubs_dedicated.c.
 add_executable(q2ded ${Server-Source} ${Server-Header} ${Platform-Specific-Source}
-		${Backends-Generic-Source})
+		${Backends-Generic-Source} ${VR_SRC_DIR}/vr_stubs_dedicated.c)
 set_target_properties(q2ded PROPERTIES
 	COMPILE_DEFINITIONS "DEDICATED_ONLY"
 	RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release
