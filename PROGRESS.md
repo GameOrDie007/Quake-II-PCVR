@@ -87,10 +87,53 @@ in the `game_import_t` table; and their gl3 was never made to compile
 (`GL3_Init` has the old signature, `gl3_mesh.c` calls `qglScalef`). Android
 built none of those paths.
 
+## Confirmed working in the headset
+
+Stereo fuses, head tracking, controllers, movement, snap turn, sound, HUD and
+menu, 90fps. Verified by Miles on a Quest 3 over Virtual Desktop.
+
+Four issues found in that first session, all fixed:
+
+- **Double vision.** `gl1_stereo` defaults to 0. Their Android launcher passes
+  `+set gl1_stereo 8` (STEREO_OPENXR) on the command line it builds; without it
+  the renderer ignores the per-eye camera separation `cl_screen.c` computes
+  from `vr_worldscale`, drawing both eyes from the same point while the
+  compositor is told they came from different ones. Phase one now sets it,
+  along with the `r_mode -1` / `r_customwidth` / `r_customheight` from the same
+  command line.
+- **30fps.** `RI_EndFrame` swaps the desktop window, which blocks on the
+  monitor's vsync, and it runs once per eye - so a 60Hz desktop pins the
+  headset to exactly 30. Their `RI_EndFrame` is a no-op because Android has no
+  desktop window; reverting `gl1_sdl.c` to stock brought the blocking swap
+  back. `r_vsync` is now forced off in VR, since the compositor paces us
+  through `xrWaitFrame`. Measured 90fps.
+- **No sound.** `DEFAULT_OPENAL_DRIVER` is `openal32.dll` on Windows; MSYS2
+  ships the same library as `libopenal-1.dll`. Copied under the expected name.
+- **Tiny UI.** They replaced upstream's resolution-derived 2D scale with a flat
+  `return 1` in `SCR_GetDefaultScale`, correct only at their eye-buffer width.
+  Now scaled against a reference width, set by eye at 4.51x here.
+
+Also fixed: the weapon jumped sideways for one frame on snap turn, because
+`HandleInput_Default` places the weapon from the previous frame's viewangles
+while `snapTurn` is not updated until 300 lines later. Corrected with a delta
+measured inside the call. **The first attempt at this broke tracking outright**
+by assuming `cl.refdef.viewangles[YAW] - hmdorientation[YAW]` equals `snapTurn`
+- see [[vr-port-verify-before-asking]].
+
 ## Next
 
-Test in the headset. Everything after that is comparison against the
-standalone build.
+Systematic comparison against the standalone: options menus, weapon models,
+HUD layout, weapon alignment and aim, haptics, laser sight.
+
+Known and deliberately deferred:
+
+- gl3 is not built. Their gl3 was never made to compile, so VR-on-gl3 would be
+  new work rather than a port. gl1 is what their standalone uses.
+- Perceived detail is gl1's fixed-function look plus 256x256 textures magnified
+  to 3379 pixels per eye. Nothing in their diff reduces texture quality;
+  anisotropic filtering is at 16x.
+- Force-killing the process mid-frame leaves it stuck in the VR runtime.
+  Quitting through the menu has not been checked.
 
 ## Notes
 
