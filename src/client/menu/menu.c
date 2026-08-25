@@ -31,6 +31,7 @@
 
 #include <ctype.h>
 #include "../header/client.h"
+#include "../../vr/vr_surface.h"
 #include "../sound/header/local.h"
 #include "header/qmenu.h"
 #include "../../vr/teambeef/VrCvars.h"
@@ -1637,7 +1638,9 @@ Options_MenuInit(void)
        exactly as Team Beef arranged them. */
     s_pcoptions_action.generic.type = MTYPE_ACTION;
     s_pcoptions_action.generic.x = 0;
-    s_pcoptions_action.generic.y = 170;
+    /* 160, not 170 - their reset-defaults action already occupies 170 and the
+       two drew on top of each other. 160 is the gap in their layout. */
+    s_pcoptions_action.generic.y = 160;
     s_pcoptions_action.generic.name = "pc options";
     s_pcoptions_action.generic.callback = (void (*)(void *))M_Menu_PCOptions_f;
 
@@ -1718,10 +1721,24 @@ static const char *msaa_names[] = {"off", "2x", "4x", "8x", 0};
 static const char *pc_yesno_names[] = {"no", "yes", 0};
 
 /* Slider runs 5..20, giving 0.5 to 2.0 in tenths. Their build is 1.1. */
+/*
+ * Both of these size the eye framebuffers, which are created once, so a
+ * change cannot take effect until the next run. Say so at the moment it is
+ * changed - a note further down the screen was missed, and the setting
+ * looking like it did nothing is exactly the confusion worth avoiding.
+ */
+static void
+NeedsRestartPopup(void)
+{
+    m_popup_string = "Restart the game to apply";
+    m_popup_endtime = cls.realtime + 2000;
+}
+
 static void
 SupersamplingFunc(void *unused)
 {
     Cvar_SetValue("vr_supersampling", s_pcoptions_supersampling_slider.curvalue / 10.0f);
+    NeedsRestartPopup();
 }
 
 static void
@@ -1730,6 +1747,7 @@ MsaaFunc(void *unused)
     static const int samples[] = {1, 2, 4, 8};
 
     Cvar_SetValue("vr_msaa", (float)samples[s_pcoptions_msaa_box.curvalue]);
+    NeedsRestartPopup();
 }
 
 static void
@@ -1762,7 +1780,7 @@ PCOptions_MenuInit(void)
 
     s_pcoptions_msaa_box.generic.type = MTYPE_SPINCONTROL;
     s_pcoptions_msaa_box.generic.x = 0;
-    s_pcoptions_msaa_box.generic.y = (y += 20);
+    s_pcoptions_msaa_box.generic.y = (y += 10);
     s_pcoptions_msaa_box.generic.name = "antialiasing";
     s_pcoptions_msaa_box.generic.callback = MsaaFunc;
     s_pcoptions_msaa_box.itemnames = msaa_names;
@@ -1793,19 +1811,40 @@ PCOptions_MenuDraw(void)
     Menu_AdjustCursor(&s_pcoptions_menu, 1);
     Menu_Draw(&s_pcoptions_menu);
 
-    /* Both buffer settings are fixed when the eye framebuffers are created,
-       so say so rather than letting them look broken until a restart. */
-    M_Print(s_pcoptions_menu.x - 160 * scale,
-            (s_pcoptions_menu.y + 70) * scale,
-            "resolution and antialiasing");
-    M_Print(s_pcoptions_menu.x - 160 * scale,
-            (s_pcoptions_menu.y + 80) * scale,
-            "apply on restart");
+    /*
+     * Show what the eye buffer is actually running at. Render resolution is a
+     * multiplier of whatever the runtime asks for, so the same number means
+     * different things on different headsets and streaming settings, and the
+     * cost of raising it is not otherwise visible until the frame rate drops.
+     */
+    {
+        int eyeWidth = 0;
+        int eyeHeight = 0;
+
+        TBXR_GetEyeResolution(&eyeWidth, &eyeHeight);
+
+        if (eyeWidth > 0 && eyeHeight > 0)
+        {
+            char buf[64];
+
+            Com_sprintf(buf, sizeof(buf), "now %dx%d per eye", eyeWidth, eyeHeight);
+            M_Print(s_pcoptions_menu.x - 88 * scale,
+                    (s_pcoptions_menu.y + 45) * scale, buf);
+        }
+    }
+
+    M_Popup();
 }
 
 static const char *
 PCOptions_MenuKey(int key)
 {
+    if (m_popup_string)
+    {
+        m_popup_string = NULL;
+        return NULL;
+    }
+
     return Default_MenuKey(&s_pcoptions_menu, key);
 }
 
