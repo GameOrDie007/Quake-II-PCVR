@@ -470,44 +470,25 @@ q2xrFramebuffer_Create(q2xrFramebuffer *fb, int width, int height)
 	gl.BindRenderbuffer(GL_RENDERBUFFER, fb->MsaaColour);
 
 	/*
-	 * The format of this buffer decides the overall brightness, because a blit
-	 * converts between colour spaces and their build never performs one.
+	 * sRGB, matching the swapchain image. The resolve blit is between two
+	 * buffers of the same encoding, which is what their implicit-resolve path
+	 * effectively is too.
 	 *
-	 * sRGB (vr_srgb 1, the default): the blit reads an sRGB source, so every
-	 * pixel is linearised on the way out, and writing into the sRGB swapchain
-	 * with GL_FRAMEBUFFER_SRGB disabled stores that linearised value raw. One
-	 * uncancelled sRGB-to-linear conversion across the frame, which is darker.
-	 * That is what the Quest build looks like, so it is what a port of it
-	 * should look like.
-	 *
-	 * Linear (vr_srgb 0): read raw, write raw, no conversion anywhere. This is
-	 * arguably the "correct" pipeline - the engine already outputs gamma-space
-	 * colour, so the swapchain receives exactly what was drawn - but it is
-	 * visibly brighter than the standalone.
-	 *
-	 * Which is right is a question about the Adreno driver rather than about
-	 * their source, and cannot be settled by reading their code. The evidence
-	 * settles it instead: the standalone is darker than this port at its
-	 * darkest lightmap setting, and linearising on resolve is the only
-	 * remaining difference big enough to account for it.
-	 *
-	 * Format is fixed when the buffer is created, so changing vr_srgb needs a
-	 * restart.
+	 * This was briefly made selectable while chasing a brightness difference
+	 * against the standalone. Both settings looked identical in the headset,
+	 * which is the expected result if the driver treats a same-encoding blit
+	 * as a straight copy - so the switch was measuring nothing and has been
+	 * removed rather than left as a setting that does not do anything.
 	 */
+	if (fb->Samples > 1 && gl.RenderbufferStorageMultisample)
 	{
-		cvar_t *srgb = Cvar_Get("vr_srgb", "1", CVAR_ARCHIVE);
-		GLenum colourFormat = (srgb->value != 0.0f) ? GL_SRGB8_ALPHA8 : GL_RGBA8;
-
-		if (fb->Samples > 1 && gl.RenderbufferStorageMultisample)
-		{
-			gl.RenderbufferStorageMultisample(GL_RENDERBUFFER, fb->Samples,
-					colourFormat, width, height);
-		}
-		else
-		{
-			fb->Samples = 0;
-			gl.RenderbufferStorage(GL_RENDERBUFFER, colourFormat, width, height);
-		}
+		gl.RenderbufferStorageMultisample(GL_RENDERBUFFER, fb->Samples,
+				GL_SRGB8_ALPHA8, width, height);
+	}
+	else
+	{
+		fb->Samples = 0;
+		gl.RenderbufferStorage(GL_RENDERBUFFER, GL_SRGB8_ALPHA8, width, height);
 	}
 
 	gl.GenRenderbuffers(1, &fb->MsaaDepth);
