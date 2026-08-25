@@ -709,6 +709,19 @@ Qcommon_Frame(int usec)
 
 
 	// Target framerate.
+	/* Team Beef removed cl_maxfps outright - on a headset the frame rate is
+	   driven by the compositor, not by a cvar - but left this reference in the
+	   dedicated-server half of the file, which Android never compiles. The
+	   dedicated server has no headset pacing it, so restore the cvar here
+	   only. Scoped to this branch so the VR client stays exactly as they
+	   wrote it. */
+	static cvar_t *cl_maxfps;
+
+	if (cl_maxfps == NULL)
+	{
+		cl_maxfps = Cvar_Get("cl_maxfps", "60", CVAR_ARCHIVE);
+	}
+
 	pfps = (int)cl_maxfps->value;
 
 

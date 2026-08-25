@@ -27,7 +27,7 @@
 
 #include "../../client/header/client.h"
 #include "../../client/menu/header/qmenu.h"
-#include "../../../../Quake2VR/VrCvars.h"
+#include "../../vr/teambeef/VrCvars.h"
 
 extern void M_ForceMenuOff(void);
 

@@ -26,7 +26,7 @@
 
 #include <math.h>
 #include "header/client.h"
-#include "../../../Quake2VR/mathlib.h"
+#include "../vr/teambeef/mathlib.h"
 
 extern struct model_s *cl_mod_powerscreen;
 

@@ -25,7 +25,7 @@
  */
 
 #include "header/local.h"
-#include "VrCommon.h"
+#include "../../../vr/teambeef/VrCommon.h"
 
 image_t gltextures[MAX_GLTEXTURES];
 int numgltextures;
