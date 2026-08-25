@@ -90,7 +90,7 @@ S_LoadSound(sfx_t *s)
 	int size;
 	char *name;
 
-	if (s->name[0] == '*')
+	if (s == NULL || s->name[0] == '*')
 	{
 		return NULL;
 	}
@@ -146,8 +146,8 @@ S_LoadSound(sfx_t *s)
 	{
 		sc = AL_UploadSfx(s, &info, data + info.dataofs);
 	}
+#else
 	else
-#endif
 	{
 		if (sound_started == SS_SDL)
 		{
@@ -159,6 +159,7 @@ S_LoadSound(sfx_t *s)
 			}
 		}
 	}
+#endif
 
 	FS_FreeFile(data);
 	return sc;
@@ -593,8 +594,8 @@ S_IssuePlaysound(playsound_t *ps)
 		ch->oal_vol = ps->volume * (s_volume->value);
 		AL_PlayChannel(ch);
 	}
+#else
 	else
-#endif
 	{
 		if (sound_started == SS_SDL)
 		{
@@ -602,6 +603,7 @@ S_IssuePlaysound(playsound_t *ps)
 			SDL_Spatialize(ch);
 		}
 	}
+#endif
 
 	ch->pos = 0;
 	ch->end = paintedtime + sc->length;
@@ -698,7 +700,8 @@ S_StartSound(vec3_t origin, int entnum, int entchannel, sfx_t *sfx,
 		dir_y = 16 * orientation[1] * direction[1];
 		dir_z = 16 * orientation[2] * direction[2];
 
-		Haptic_Feedback(sfx->name, 16 - distance_direction / 32, dir_x, dir_y, dir_z);
+		//We do our own haptics
+		//Haptic_Feedback(sfx->name, 16 - distance_direction / 32, dir_x, dir_y, dir_z);
 	}
 
 	ps->entnum = entnum;
@@ -712,8 +715,8 @@ S_StartSound(vec3_t origin, int entnum, int entchannel, sfx_t *sfx,
 		ps->begin = paintedtime + timeofs * 1000;
 		ps->volume = fvol;
 	}
+#else
 	else
-#endif
 	{
 		if (sound_started == SS_SDL)
 		{
@@ -721,6 +724,7 @@ S_StartSound(vec3_t origin, int entnum, int entchannel, sfx_t *sfx,
 			ps->volume = fvol * 255;
 		}
 	}
+#endif
 
 	/* sort into the pending sound list */
 	for (sort = s_pendingplays.next;
@@ -793,15 +797,16 @@ S_StopAllSounds(void)
 	{
 		AL_StopAllChannels();
 	}
+#else
 	else
-#endif
+
 	{
 		if (sound_started == SS_SDL)
 		{
 			SDL_ClearBuffer();
 		}
 	}
-
+#endif
 	/* clear all the channels */
 	memset(channels, 0, sizeof(channels));
 }
@@ -865,14 +870,15 @@ S_RawSamples(int samples, int rate, int width,
 	{
 		AL_RawSamples(samples, rate, width, channels, data, volume);
 	}
+#else
 	else
-#endif
 	{
 		if (sound_started == SS_SDL)
 		{
 			SDL_RawSamples(samples, rate, width, channels, data, volume);
 		}
 	}
+#endif
 }
 
 /*
@@ -899,14 +905,15 @@ S_Update(vec3_t origin, vec3_t forward, vec3_t right, vec3_t up)
 	{
 		AL_Update();
 	}
+#else
 	else
-#endif
 	{
 		if (sound_started == SS_SDL)
 		{
 			SDL_Update();
 		}
 	}
+#endif
 }
 
 /*
@@ -1017,11 +1024,12 @@ S_SoundInfo_f(void)
 	{
 		QAL_SoundInfo();
 	}
+#else
 	else
-#endif
 	{
 		SDL_SoundInfo();
 	}
+#endif
 }
 
 /*
@@ -1067,8 +1075,8 @@ S_Init(void)
 	{
 		sound_started = SS_OAL;
 	}
+#else
 	else
-#endif
 	{
 		if (SDL_BackendInit())
 		{
@@ -1080,6 +1088,7 @@ S_Init(void)
 			return;
 		}
 	}
+#endif
 
 	num_sfx = 0;
 	paintedtime = 0;
@@ -1145,13 +1154,14 @@ S_Shutdown(void)
 		AL_Shutdown();
 	}
 	else
-#endif
+#else
 	{
 		if (sound_started == SS_SDL)
 		{
 			SDL_BackendShutdown();
 		}
 	}
+#endif
 
 	sound_started = SS_NOT;
 	s_numchannels = 0;

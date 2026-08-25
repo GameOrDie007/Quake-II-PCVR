@@ -171,6 +171,11 @@ typedef struct
 	cvar_t *(*cvar_set)(char *var_name, char *value);
 	cvar_t *(*cvar_forceset)(char *var_name, char *value);
 
+	//VR Stuff
+	void (*HapticVibrate)( float duration, int channel, float intensity );
+	void (*getVROrigins)(vec3_t weaponoffset, vec3_t weaponangles, vec3_t hmdPosition);
+	float (*getFOV)( );
+
 	/* ClientCommand and ServerCommand parameter access */
 	int (*argc)(void);
 	char *(*argv)(int n);

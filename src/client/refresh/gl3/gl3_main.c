@@ -95,8 +95,8 @@ cvar_t *gl3_particle_size;
 cvar_t *gl3_particle_fade_factor;
 cvar_t *gl3_particle_square;
 
+cvar_t *vr_lasersight;
 cvar_t *gl_lefthand;
-cvar_t *r_gunfov;
 cvar_t *r_farsee;
 
 cvar_t *gl3_intensity;
@@ -191,8 +191,8 @@ GL3_Strings(void)
 static void
 GL3_Register(void)
 {
+	vr_lasersight = ri.Cvar_Get("vr_lasersight", "2", CVAR_LATCH);
 	gl_lefthand = ri.Cvar_Get("hand", "0", CVAR_USERINFO | CVAR_ARCHIVE);
-	r_gunfov = ri.Cvar_Get("r_gunfov", "80", CVAR_ARCHIVE);
 	r_farsee = ri.Cvar_Get("r_farsee", "0", CVAR_LATCH | CVAR_ARCHIVE);
 
 	gl_drawbuffer = ri.Cvar_Get("gl_drawbuffer", "GL_BACK", 0);
@@ -786,6 +786,83 @@ GL3_DrawBeam(entity_t *e)
 }
 
 static void
+GL3_DrawLaserSight(entity_t *e)
+{
+	int i;
+	float r, g, b;
+
+	enum { NUM_BEAM_SEGS = 3 };
+
+	vec3_t perpvec;
+	vec3_t direction, normalized_direction;
+	vec3_t start_points[NUM_BEAM_SEGS], end_points[NUM_BEAM_SEGS];
+	vec3_t oldorigin, origin;
+
+	gl3_3D_vtx_t verts[NUM_BEAM_SEGS*4];
+	unsigned int pointb;
+
+	oldorigin[0] = e->oldorigin[0];
+	oldorigin[1] = e->oldorigin[1];
+	oldorigin[2] = e->oldorigin[2];
+
+	origin[0] = e->origin[0];
+	origin[1] = e->origin[1];
+	origin[2] = e->origin[2];
+
+	normalized_direction[0] = direction[0] = oldorigin[0] - origin[0];
+	normalized_direction[1] = direction[1] = oldorigin[1] - origin[1];
+	normalized_direction[2] = direction[2] = oldorigin[2] - origin[2];
+
+	if (VectorNormalize(normalized_direction) == 0)
+	{
+		return;
+	}
+
+	PerpendicularVector(perpvec, normalized_direction);
+	VectorScale(perpvec, 0.12, perpvec);
+
+	for (i = 0; i < 6; i++)
+	{
+		RotatePointAroundVector(start_points[i], normalized_direction, perpvec,
+								(360.0 / NUM_BEAM_SEGS) * i);
+		VectorAdd(start_points[i], origin, start_points[i]);
+		VectorAdd(start_points[i], direction, end_points[i]);
+	}
+
+	//glDisable(GL_TEXTURE_2D);
+	glEnable(GL_BLEND);
+	glDepthMask(GL_FALSE);
+
+	GL3_UseProgram(gl3state.si3DcolorOnly.shaderProgram);
+
+	r = 1.0;
+	g = 0;
+	b = 0;
+
+	gl3state.uniCommonData.color = HMM_Vec4(r, g, b, 1.0);
+	GL3_UpdateUBOCommon();
+
+	for ( i = 0; i < NUM_BEAM_SEGS; i++ )
+	{
+		VectorCopy(start_points[i], verts[4*i+0].pos);
+		VectorCopy(end_points[i], verts[4*i+1].pos);
+
+		pointb = ( i + 1 ) % NUM_BEAM_SEGS;
+
+		VectorCopy(start_points[pointb], verts[4*i+2].pos);
+		VectorCopy(end_points[pointb], verts[4*i+3].pos);
+	}
+
+	GL3_BindVAO(gl3state.vao3D);
+	GL3_BindVBO(gl3state.vbo3D);
+
+	GL3_BufferAndDraw3D(verts, NUM_BEAM_SEGS*4, GL_TRIANGLE_STRIP);
+
+	glDisable(GL_BLEND);
+	glDepthMask(GL_TRUE);
+}
+
+static void
 GL3_DrawSpriteModel(entity_t *e)
 {
 	float alpha = 1.0F;
@@ -943,8 +1020,9 @@ GL3_DrawParticles(void)
 
 		glDepthMask(GL_FALSE);
 		glEnable(GL_BLEND);
+#ifndef USE_GLES3
 		glEnable(GL_PROGRAM_POINT_SIZE);
-
+#endif
 		GL3_UseProgram(gl3state.siParticle.shaderProgram);
 
 		for ( i = 0, p = gl3_newrefdef.particles; i < numParticles; i++, p++ )
@@ -971,7 +1049,9 @@ GL3_DrawParticles(void)
 
 		glDisable(GL_BLEND);
 		glDepthMask(GL_TRUE);
+#ifndef USE_GLES3
 		glDisable(GL_PROGRAM_POINT_SIZE);
+#endif
 	}
 }
 
@@ -979,6 +1059,9 @@ static void
 GL3_DrawEntitiesOnList(void)
 {
 	int i;
+
+	entity_t *lasersight = NULL;
+
 
 	if (!r_drawentities->value)
 	{
@@ -1000,6 +1083,10 @@ GL3_DrawEntitiesOnList(void)
 		if (currententity->flags & RF_BEAM)
 		{
 			GL3_DrawBeam(currententity);
+		}
+		else if ( currententity->flags & RF_LASERSIGHT )
+		{
+			lasersight = currententity;
 		}
 		else
 		{
@@ -1074,6 +1161,12 @@ GL3_DrawEntitiesOnList(void)
 			}
 		}
 	}
+
+	if (lasersight != NULL)
+	{
+		GL3_DrawLaserSight( lasersight );
+	}
+
 
 	GL3_DrawAliasShadows();
 
@@ -1337,7 +1430,7 @@ SetupGL(void)
 	{
 		float screenaspect = (float)gl3_newrefdef.width / gl3_newrefdef.height;
 		float dist = (r_farsee->value == 0) ? 4096.0f : 8192.0f;
-		gl3state.uni3DData.transProjMat4 = GL3_MYgluPerspective(gl3_newrefdef.fov_y, screenaspect, 4, dist);
+		gl3state.uni3DData.transProjMat4 = GL3_MYgluPerspective(gl3_newrefdef.fov_y, screenaspect, 0.1, dist);
 	}
 
 	glCullFace(GL_FRONT);
@@ -1674,7 +1767,11 @@ GL3_Clear(void)
 	gl3depthmax = 1;
 	glDepthFunc(GL_LEQUAL);
 
+#ifdef USE_GLES3
+	glDepthRangef(gl3depthmin, gl3depthmax);
+#else
 	glDepthRange(gl3depthmin, gl3depthmax);
+#endif
 
 	if (gl_zfix->value)
 	{
@@ -1699,11 +1796,16 @@ GL3_Clear(void)
 void
 GL3_BeginFrame(float camera_separation)
 {
+#ifdef __ANDROID__ // Fix state after touch controls
+	glBindTexture(GL_TEXTURE_2D, gl3state.currenttexture);
+#endif
+
 	/* change modes if necessary */
 	if (r_mode->modified)
 	{
 		vid_fullscreen->modified = true;
 	}
+
 
 #if 0 // TODO: stereo stuff
 	gl_state.camera_separation = camera_separation;
@@ -1769,7 +1871,7 @@ GL3_BeginFrame(float camera_separation)
 	if (gl_drawbuffer->modified)
 	{
 		gl_drawbuffer->modified = false;
-
+#ifndef USE_GLES3 // glDrawBuffer does not exist
 		// TODO: stereo stuff
 		//if ((gl3state.camera_separation == 0) || gl3state.stereo_mode != STEREO_MODE_OPENGL)
 		{
@@ -1782,6 +1884,7 @@ GL3_BeginFrame(float camera_separation)
 				glDrawBuffer(GL_BACK);
 			}
 		}
+#endif
 	}
 
 	/* texturemode stuff */

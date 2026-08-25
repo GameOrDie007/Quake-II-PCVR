@@ -82,10 +82,17 @@ enum {
 };
 
 // TODO: do we need the following configurable?
+#ifdef USE_GLES3 //GLES needs same internal and data format
+static const int gl3_solid_format = GL_RGBA;
+static const int gl3_alpha_format = GL_RGBA;
+static const int gl3_tex_solid_format = GL_RGBA;
+static const int gl3_tex_alpha_format = GL_RGBA;
+#else
 static const int gl3_solid_format = GL_RGB;
 static const int gl3_alpha_format = GL_RGBA;
 static const int gl3_tex_solid_format = GL_RGB;
 static const int gl3_tex_alpha_format = GL_RGBA;
+#endif
 
 extern unsigned gl3_rawpalette[256];
 extern unsigned d_8to24table[256];
@@ -500,7 +507,6 @@ extern cvar_t *r_fullbright;
 
 extern cvar_t *r_norefresh;
 extern cvar_t *gl_lefthand;
-extern cvar_t *r_gunfov;
 extern cvar_t *r_farsee;
 extern cvar_t *r_drawworld;
 

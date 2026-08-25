@@ -33,8 +33,16 @@
 
 void registerHandler(void);
 
+#ifdef __ANDROID__
+#define FNDELAY 0
+#endif
+
 int
+#ifdef __ANDROID__
+main_android(int argc, char **argv)
+#else
 main(int argc, char **argv)
+#endif
 {
 	// register signal handler
 	registerHandler();

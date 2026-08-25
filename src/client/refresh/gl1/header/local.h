@@ -91,6 +91,7 @@ enum stereo_modes {
 	STEREO_MODE_PIXEL_INTERLEAVED,
 	STEREO_SPLIT_HORIZONTAL,
 	STEREO_SPLIT_VERTICAL,
+	STEREO_OPENXR,
 };
 
 enum opengl_special_buffer_modes {
@@ -166,7 +167,6 @@ extern int r_viewcluster, r_viewcluster2, r_oldviewcluster, r_oldviewcluster2;
 
 extern cvar_t *r_norefresh;
 extern cvar_t *gl_lefthand;
-extern cvar_t *r_gunfov;
 extern cvar_t *r_farsee;
 extern cvar_t *r_drawentities;
 extern cvar_t *r_drawworld;
@@ -174,6 +174,9 @@ extern cvar_t *r_speeds;
 extern cvar_t *r_fullbright;
 extern cvar_t *r_novis;
 extern cvar_t *r_lerpmodels;
+
+extern cvar_t *vr_weaponscale;
+extern cvar_t *vr_lasersight;
 
 extern cvar_t *r_lightlevel;
 extern cvar_t *gl1_overbrightbits;
@@ -258,6 +261,7 @@ void R_DrawAliasModel(entity_t *e);
 void R_DrawBrushModel(entity_t *e);
 void R_DrawSpriteModel(entity_t *e);
 void R_DrawBeam(entity_t *e);
+void R_DrawLaserSight( entity_t *e );
 void R_DrawWorld(void);
 void R_RenderDlights(void);
 void R_DrawAlphaSurfaces(void);
@@ -293,7 +297,7 @@ void R_ImageList_f(void);
 
 void R_SetTexturePalette(unsigned palette[256]);
 
-void R_InitImages(void);
+void R_InitImages(int hmdType);
 void R_ShutdownImages(void);
 
 void R_FreeUnusedImages(void);
@@ -352,7 +356,7 @@ typedef struct
 	enum stereo_modes stereo_mode;
 
 	qboolean stencil;
-} glstate_t;
+} gl1state_t;
 
 typedef struct
 {
@@ -369,7 +373,7 @@ typedef struct
 } gllightmapstate_t;
 
 extern glconfig_t gl_config;
-extern glstate_t gl_state;
+extern gl1state_t gl_state;
 
 /*
  * Updates the gamma ramp.

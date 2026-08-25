@@ -69,6 +69,7 @@ typedef struct
 	int endtime;
 } laser_t;
 laser_t cl_lasers[MAX_LASERS];
+laser_t		cl_lasersight;
 
 cl_sustain_t cl_sustains[MAX_SUSTAINS];
 
@@ -114,6 +115,8 @@ struct model_s *cl_mod_lightning;
 struct model_s *cl_mod_heatbeam;
 struct model_s *cl_mod_monster_heatbeam;
 struct model_s *cl_mod_explo4_big;
+
+extern cvar_t *vr_lasersight;
 
 void
 CL_RegisterTEntSounds(void)
@@ -186,6 +189,7 @@ CL_ClearTEnts(void)
 	memset(cl_beams, 0, sizeof(cl_beams));
 	memset(cl_explosions, 0, sizeof(cl_explosions));
 	memset(cl_lasers, 0, sizeof(cl_lasers));
+	memset (&cl_lasersight, 0, sizeof(laser_t));
 
 	memset(cl_playerbeams, 0, sizeof(cl_playerbeams));
 	memset(cl_sustains, 0, sizeof(cl_sustains));
@@ -502,6 +506,75 @@ CL_ParseLaser(int colors)
 			l->endtime = cl.time + 100;
 			return;
 		}
+	}
+}
+
+
+/*
+=================
+CL_ParseLaserSight
+=================
+*/
+void CL_ParseLaserSight ()
+{
+	int weapon = MSG_ReadByte(&net_message);
+
+	//Set end time so laser is drawn
+	cl_lasersight.ent.flags = RF_LASERSIGHT;
+	cl_lasersight.ent.frame = weapon; // Used to indicate the weapon
+	cl_lasersight.endtime = cl.time+250;
+}
+
+//void SetWeapon6DOF(int weapmodel, vec3_t origin, vec3_t gunorigin, vec3_t gunangles);
+void convertFromVRtoQ2(vec3_t in, vec3_t offset, vec3_t out);
+
+trace_t CL_Trace (vec3_t start, vec3_t end, float size,  int contentmask)
+{
+	vec3_t maxs, mins;
+
+	VectorSet(maxs, size, size, size);
+	VectorSet(mins, -size, -size, -size);
+
+	return CM_BoxTrace (start, end, mins, maxs, 0, contentmask);
+}
+
+extern vec3_t weaponangles;
+extern vec3_t weaponoffset;
+extern vec3_t hmdPosition;
+extern cvar_t *vr_height_adjust;
+
+void CL_UpdateLaserSightOrigins ()
+{
+	if (cl_lasersight.endtime > cl.time) {
+		vec3_t forward, right;
+		vec3_t end;
+		vec3_t gunorigin;
+
+		//At the point of calling this, the vieworg should already have the player height included
+		convertFromVRtoQ2(weaponoffset, cl.refdef.vieworg, gunorigin);
+        gunorigin[2] -= (QUAKE_MARINE_HEIGHT * vr_worldscale->value);
+        gunorigin[2] += ((hmdPosition[1] + vr_height_adjust->value) * vr_worldscale->value);
+		//gunorigin[2] += 1; // just add a little bit
+		// Aim the laser along the recoiled weapon direction so the dot/line tracks the
+		// muzzle climb: bullets are fired along v_angle + kick_angles, and in VR v_angle
+		// is weaponangles, so add the kick the server reports in the player state.
+		vec3_t aimangles;
+		VectorAdd(weaponangles, cl.frame.playerstate.kick_angles, aimangles);
+		AngleVectors(aimangles, forward, right, NULL);
+
+		qboolean useTrajectoryIndicator = cl_lasersight.ent.frame == 6 || cl_lasersight.ent.frame == 7;
+
+        VectorMA(gunorigin, (float)(useTrajectoryIndicator ? 16.0 : 4096.0), forward, end);
+		trace_t tr = CL_Trace(gunorigin, end, 1,
+							  CONTENTS_SOLID | CONTENTS_MONSTER | CONTENTS_DEADMONSTER);
+        if (vr_lasersight->value == 1.0) {
+            VectorCopy(gunorigin, cl_lasersight.ent.origin);
+            VectorCopy(tr.endpos, cl_lasersight.ent.oldorigin);
+        }
+        if (vr_lasersight->value == 2.0) {
+            VectorCopy(tr.endpos, cl_lasersight.ent.origin);
+            VectorMA(tr.endpos, 0.1f, forward, cl_lasersight.ent.oldorigin);
+        }
 	}
 }
 
@@ -974,6 +1047,10 @@ CL_ParseTEnt(void)
 
 		case TE_BFG_LASER:
 			CL_ParseLaser(0xd0d1d2d3);
+			break;
+
+		case TE_LASER_SIGHT:
+			CL_ParseLaserSight ();
 			break;
 
 		case TE_BUBBLETRAIL:
@@ -1830,6 +1907,9 @@ CL_AddLasers(void)
 			V_AddEntity(&l->ent);
 		}
 	}
+
+	if (cl_lasersight.endtime >= cl.time)
+		V_AddEntity (&cl_lasersight.ent);
 }
 
 void

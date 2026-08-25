@@ -26,6 +26,9 @@
 
 #include "header/local.h"
 
+#include <src/gl/loader.h>
+
+
 #define NUM_BEAM_SEGS 6
 
 viddef_t vid;
@@ -34,7 +37,7 @@ model_t *r_worldmodel;
 float gldepthmin, gldepthmax;
 
 glconfig_t gl_config;
-glstate_t gl_state;
+gl1state_t gl_state;
 
 image_t *r_notexture; /* use for bad textures */
 image_t *r_particletexture; /* little dot for particles */
@@ -76,8 +79,11 @@ cvar_t *r_fullbright;
 cvar_t *r_novis;
 cvar_t *r_lerpmodels;
 cvar_t *gl_lefthand;
-cvar_t *r_gunfov;
 cvar_t *r_farsee;
+
+cvar_t *vr_lasersight;
+cvar_t *vr_weaponscale;
+
 
 cvar_t *r_lightlevel;
 cvar_t *gl1_overbrightbits;
@@ -135,6 +141,10 @@ cvar_t *gl1_stereo;
 cvar_t *gl1_stereo_separation;
 cvar_t *gl1_stereo_anaglyph_colors;
 cvar_t *gl1_stereo_convergence;
+cvar_t *gl1_openxr_fov_left[2];
+cvar_t *gl1_openxr_fov_right[2];
+cvar_t *gl1_openxr_fov_up[2];
+cvar_t *gl1_openxr_fov_down[2];
 
 
 refimport_t ri;
@@ -325,6 +335,8 @@ R_DrawEntitiesOnList(void)
 		return;
 	}
 
+	entity_t *lasersight = NULL;
+
 	/* draw non-transparent first */
 	for (i = 0; i < r_newrefdef.num_entities; i++)
 	{
@@ -338,6 +350,10 @@ R_DrawEntitiesOnList(void)
 		if (currententity->flags & RF_BEAM)
 		{
 			R_DrawBeam(currententity);
+		}
+		else if ( currententity->flags & RF_LASERSIGHT )
+		{
+			lasersight = currententity;
 		}
 		else
 		{
@@ -411,6 +427,11 @@ R_DrawEntitiesOnList(void)
 					break;
 			}
 		}
+	}
+
+	if (lasersight != NULL)
+	{
+		R_DrawLaserSight( lasersight );
 	}
 
 	glDepthMask(1); /* back to writing */
@@ -744,16 +765,31 @@ R_MYgluPerspective(GLdouble fovy, GLdouble aspect,
 {
 	GLdouble xmin, xmax, ymin, ymax;
 
+	if (gl_state.stereo_mode == STEREO_OPENXR && gl_state.camera_separation != 0)
+	{
+		const int eye = gl_state.camera_separation < 0 ? 0 : 1;
+		if (gl1_openxr_fov_left[eye] && gl1_openxr_fov_right[eye] &&
+			gl1_openxr_fov_up[eye] && gl1_openxr_fov_down[eye])
+		{
+			xmin = gl1_openxr_fov_left[eye]->value * zNear;
+			xmax = gl1_openxr_fov_right[eye]->value * zNear;
+			ymin = gl1_openxr_fov_down[eye]->value * zNear;
+			ymax = gl1_openxr_fov_up[eye]->value * zNear;
+			glFrustumf(xmin, xmax, ymin, ymax, zNear, zFar);
+			return;
+		}
+	}
+
 	ymax = zNear * tan(fovy * M_PI / 360.0);
 	ymin = -ymax;
 
 	xmin = ymin * aspect;
 	xmax = ymax * aspect;
 
-	xmin += - gl1_stereo_convergence->value * (2 * gl_state.camera_separation) / zNear;
-	xmax += - gl1_stereo_convergence->value * (2 * gl_state.camera_separation) / zNear;
+	//xmin += - gl1_stereo_convergence->value * (2 * gl_state.camera_separation) / zNear;
+	//xmax += - gl1_stereo_convergence->value * (2 * gl_state.camera_separation) / zNear;
 
-	glFrustum(xmin, xmax, ymin, ymax, zNear, zFar);
+	glFrustumf(xmin, xmax, ymin, ymax, zNear, zFar);
 }
 
 void
@@ -773,8 +809,9 @@ R_SetupGL(void)
 	h = y - y2;
 
 	qboolean drawing_left_eye = gl_state.camera_separation < 0;
-	qboolean stereo_split_tb = ((gl_state.stereo_mode == STEREO_SPLIT_VERTICAL) && gl_state.camera_separation);
-	qboolean stereo_split_lr = ((gl_state.stereo_mode == STEREO_SPLIT_HORIZONTAL) && gl_state.camera_separation);
+	qboolean openxr_per_eye_buffer = gl_state.stereo_mode == STEREO_OPENXR;
+	qboolean stereo_split_tb = !openxr_per_eye_buffer && ((gl_state.stereo_mode == STEREO_SPLIT_VERTICAL) && gl_state.camera_separation);
+	qboolean stereo_split_lr = !openxr_per_eye_buffer && ((gl_state.stereo_mode == STEREO_SPLIT_HORIZONTAL) && gl_state.camera_separation);
 
 	if(stereo_split_lr) {
 		w = w / 2;
@@ -795,11 +832,11 @@ R_SetupGL(void)
 
 	if (r_farsee->value == 0)
 	{
-		R_MYgluPerspective(r_newrefdef.fov_y, screenaspect, 4, 4096);
+		R_MYgluPerspective(r_newrefdef.fov_y, screenaspect, 0.1, 4096);
 	}
 	else
 	{
-		R_MYgluPerspective(r_newrefdef.fov_y, screenaspect, 4, 8192);
+		R_MYgluPerspective(r_newrefdef.fov_y, screenaspect, 0.1, 8192);
 	}
 
 	glCullFace(GL_FRONT);
@@ -882,7 +919,7 @@ R_Clear(void)
 		glDepthFunc(GL_LEQUAL);
 	}
 
-	glDepthRange(gldepthmin, gldepthmax);
+	glDepthRangef(gldepthmin, gldepthmax);
 
 	if (gl_zfix->value)
 	{
@@ -923,7 +960,7 @@ R_SetGL2D(void)
 	w = vid.width;
 	y = 0;
 	h = vid.height;
-
+/*
 	if(stereo_split_lr) {
 		w =  w / 2;
 		x = drawing_left_eye ? 0 : w;
@@ -933,11 +970,11 @@ R_SetGL2D(void)
 		h =  h / 2;
 		y = drawing_left_eye ? h : 0;
 	}
-
+*/
 	glViewport(x, y, w, h);
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glOrtho(0, vid.width, vid.height, 0, -99999, 99999);
+	glOrthof(0, vid.width, vid.height, 0, -99999, 99999);
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 	glDisable(GL_DEPTH_TEST);
@@ -953,6 +990,7 @@ R_SetGL2D(void)
 void
 R_RenderView(refdef_t *fd)
 {
+#ifndef USE_GLES1
 	if ((gl_state.stereo_mode != STEREO_MODE_NONE) && gl_state.camera_separation) {
 
 		qboolean drawing_left_eye = gl_state.camera_separation < 0;
@@ -1060,7 +1098,7 @@ R_RenderView(refdef_t *fd)
 				break;
 		}
 	}
-
+#endif
 
 	if (r_norefresh->value)
 	{
@@ -1136,6 +1174,7 @@ GL_GetSpecialBufferModeForStereoMode(enum stereo_modes stereo_mode) {
 		case STEREO_MODE_NONE:
 		case STEREO_SPLIT_HORIZONTAL:
 		case STEREO_SPLIT_VERTICAL:
+		case STEREO_OPENXR:
 		case STEREO_MODE_ANAGLYPH:
 			return OPENGL_SPECIAL_BUFFER_MODE_NONE;
 		case STEREO_MODE_OPENGL:
@@ -1199,7 +1238,9 @@ void
 R_Register(void)
 {
 	gl_lefthand = ri.Cvar_Get("hand", "0", CVAR_USERINFO | CVAR_ARCHIVE);
-	r_gunfov = ri.Cvar_Get("r_gunfov", "80", CVAR_ARCHIVE);
+	vr_lasersight = ri.Cvar_Get("vr_lasersight", "2", CVAR_LATCH);
+	vr_weaponscale = ri.Cvar_Get("vr_weaponscale", "0.56", CVAR_ARCHIVE);
+
 	r_farsee = ri.Cvar_Get("r_farsee", "0", CVAR_LATCH | CVAR_ARCHIVE);
 	r_norefresh = ri.Cvar_Get("r_norefresh", "0", 0);
 	r_fullbright = ri.Cvar_Get("r_fullbright", "0", 0);
@@ -1241,7 +1282,7 @@ R_Register(void)
 	gl_texturemode = ri.Cvar_Get("gl_texturemode", "GL_LINEAR_MIPMAP_NEAREST", CVAR_ARCHIVE);
 	gl1_texturealphamode = ri.Cvar_Get("gl1_texturealphamode", "default", CVAR_ARCHIVE);
 	gl1_texturesolidmode = ri.Cvar_Get("gl1_texturesolidmode", "default", CVAR_ARCHIVE);
-	gl_anisotropic = ri.Cvar_Get("gl_anisotropic", "0", CVAR_ARCHIVE);
+	gl_anisotropic = ri.Cvar_Get("gl_anisotropic", "4", CVAR_ARCHIVE); /* 4x by default */
 	r_lockpvs = ri.Cvar_Get("r_lockpvs", "0", 0);
 
 	gl1_palettedtexture = ri.Cvar_Get("gl1_palettedtexture", "0", CVAR_ARCHIVE);
@@ -1268,6 +1309,14 @@ R_Register(void)
 	gl1_stereo_separation = ri.Cvar_Get( "gl1_stereo_separation", "-0.4", CVAR_ARCHIVE );
 	gl1_stereo_anaglyph_colors = ri.Cvar_Get( "gl1_stereo_anaglyph_colors", "rc", CVAR_ARCHIVE );
 	gl1_stereo_convergence = ri.Cvar_Get( "gl1_stereo_convergence", "1", CVAR_ARCHIVE );
+	gl1_openxr_fov_left[0] = ri.Cvar_Get("gl1_openxr_fov_left_0", "-1", 0);
+	gl1_openxr_fov_right[0] = ri.Cvar_Get("gl1_openxr_fov_right_0", "1", 0);
+	gl1_openxr_fov_up[0] = ri.Cvar_Get("gl1_openxr_fov_up_0", "1", 0);
+	gl1_openxr_fov_down[0] = ri.Cvar_Get("gl1_openxr_fov_down_0", "-1", 0);
+	gl1_openxr_fov_left[1] = ri.Cvar_Get("gl1_openxr_fov_left_1", "-1", 0);
+	gl1_openxr_fov_right[1] = ri.Cvar_Get("gl1_openxr_fov_right_1", "1", 0);
+	gl1_openxr_fov_up[1] = ri.Cvar_Get("gl1_openxr_fov_up_1", "1", 0);
+	gl1_openxr_fov_down[1] = ri.Cvar_Get("gl1_openxr_fov_down_1", "-1", 0);
 
 	ri.Cmd_AddCommand("imagelist", R_ImageList_f);
 	ri.Cmd_AddCommand("screenshot", R_ScreenShot);
@@ -1388,7 +1437,7 @@ R_SetMode(void)
 }
 
 qboolean
-RI_Init()
+RI_Init(int hmdType)
 {
 	int j;
 	extern float r_turbsin[256];
@@ -1557,7 +1606,7 @@ RI_Init()
 
 	R_SetDefaultState();
 
-	R_InitImages();
+	R_InitImages(hmdType);
 	Mod_Init();
 	R_InitParticleTexture();
 	Draw_InitLocal();
@@ -1587,6 +1636,10 @@ RI_Shutdown(void)
 void
 RI_BeginFrame(float camera_separation)
 {
+#ifdef __ANDROID__ // Fix state after touch controls
+	glBindTexture(GL_TEXTURE_2D, gl_state.currenttextures[gl_state.currenttmu]);
+#endif
+
 	gl_state.camera_separation = camera_separation;
 
 	/* change modes if necessary */
@@ -1644,7 +1697,7 @@ RI_BeginFrame(float camera_separation)
 	w = vid.width;
 	y = 0;
 	h = vid.height;
-
+/*
 	if(stereo_split_lr) {
 		w =  w / 2;
 		x = drawing_left_eye ? 0 : w;
@@ -1654,11 +1707,11 @@ RI_BeginFrame(float camera_separation)
 		h =  h / 2;
 		y = drawing_left_eye ? h : 0;
 	}
-
+*/
 	glViewport(x, y, w, h);
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glOrtho(0, vid.width, vid.height, 0, -99999, 99999);
+	glOrthof(0, vid.width, vid.height, 0, -99999, 99999);
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
 	glDisable(GL_DEPTH_TEST);
@@ -1671,7 +1724,7 @@ RI_BeginFrame(float camera_separation)
 	if (gl_drawbuffer->modified)
 	{
 		gl_drawbuffer->modified = false;
-
+#ifndef USE_GLES1
 		if ((gl_state.camera_separation == 0) || gl_state.stereo_mode != STEREO_MODE_OPENGL)
 		{
 			if (Q_stricmp(gl_drawbuffer->string, "GL_FRONT") == 0)
@@ -1683,6 +1736,7 @@ RI_BeginFrame(float camera_separation)
 				glDrawBuffer(GL_BACK);
 			}
 		}
+#endif
 	}
 
 	/* texturemode stuff */
@@ -1748,6 +1802,142 @@ RI_SetPalette(const unsigned char *palette)
 	glClearColor(0, 0, 0, 0);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glClearColor(1, 0, 0.5, 0.5);
+}
+
+/*
+** R_DrawBeam
+*/
+void R_DrawLaserSight( entity_t *e )
+{
+#define NUM_LASER_SIGHT_SEGS 8
+    if (vr_lasersight->value == 1.0) {
+
+        int	i;
+        float r, g, b;
+
+        vec3_t perpvec;
+        vec3_t direction, normalized_direction;
+        vec3_t start_points[NUM_LASER_SIGHT_SEGS], end_points[NUM_LASER_SIGHT_SEGS];
+        vec3_t oldorigin, origin;
+
+        GLfloat vtx[3*NUM_LASER_SIGHT_SEGS*4];
+        unsigned int index_vtx = 0;
+        unsigned int pointb;
+
+        oldorigin[0] = e->oldorigin[0];
+        oldorigin[1] = e->oldorigin[1];
+        oldorigin[2] = e->oldorigin[2];
+
+        origin[0] = e->origin[0];
+        origin[1] = e->origin[1];
+        origin[2] = e->origin[2];
+
+        normalized_direction[0] = direction[0] = oldorigin[0] - origin[0];
+        normalized_direction[1] = direction[1] = oldorigin[1] - origin[1];
+        normalized_direction[2] = direction[2] = oldorigin[2] - origin[2];
+
+        if ( VectorNormalize( normalized_direction ) == 0 )
+            return;
+
+        PerpendicularVector( perpvec, normalized_direction );
+        VectorScale( perpvec, 0.1, perpvec );
+
+        for ( i = 0; i < NUM_LASER_SIGHT_SEGS; i++ )
+        {
+            RotatePointAroundVector( start_points[i], normalized_direction, perpvec, (360.0/NUM_LASER_SIGHT_SEGS)*i );
+            VectorAdd( start_points[i], origin, start_points[i] );
+            VectorAdd( start_points[i], direction, end_points[i] );
+        }
+
+        glDisable( GL_TEXTURE_2D );
+        glEnable( GL_BLEND );
+        glDepthMask( GL_FALSE );
+
+        if (e->frame == 6 || e->frame == 7)
+        {
+            glColor4f( 0, 0, 1, 1.0 );
+        } else {
+            glColor4f( 1, 0, 0, 1.0 );
+        }
+
+
+
+        for ( i = 0; i < NUM_LASER_SIGHT_SEGS; i++ )
+        {
+            vtx[index_vtx++] = start_points [ i ][ 0 ];
+            vtx[index_vtx++] = start_points [ i ][ 1 ];
+            vtx[index_vtx++] = start_points [ i ][ 2 ];
+
+            vtx[index_vtx++] = end_points [ i ][ 0 ];
+            vtx[index_vtx++] = end_points [ i ][ 1 ];
+            vtx[index_vtx++] = end_points [ i ][ 2 ];
+
+            pointb = ( i + 1 ) % NUM_LASER_SIGHT_SEGS;
+            vtx[index_vtx++] = start_points [ pointb ][ 0 ];
+            vtx[index_vtx++] = start_points [ pointb ][ 1 ];
+            vtx[index_vtx++] = start_points [ pointb ][ 2 ];
+
+            vtx[index_vtx++] = end_points [ pointb ][ 0 ];
+            vtx[index_vtx++] = end_points [ pointb ][ 1 ];
+            vtx[index_vtx++] = end_points [ pointb ][ 2 ];
+        }
+
+        glEnableClientState( GL_VERTEX_ARRAY );
+
+        glVertexPointer( 3, GL_FLOAT, 0, vtx );
+        glDrawArrays( GL_TRIANGLE_STRIP, 0, NUM_LASER_SIGHT_SEGS*4 );
+
+        glDisableClientState( GL_VERTEX_ARRAY );
+
+        glEnable( GL_TEXTURE_2D );
+        glDisable( GL_BLEND );
+        glDepthMask( GL_TRUE );
+    }
+    if (vr_lasersight->value == 2.0) {
+
+        vec3_t point;
+        VectorCopy(e->origin, point);
+
+        glDisable(GL_TEXTURE_2D);
+        glEnable(GL_BLEND);
+        glDepthMask(GL_FALSE);
+        glDisable(GL_DEPTH_TEST);
+
+        float dot_radius;
+        if (e->frame == 6 || e->frame == 7) {
+            glColor4f(0, 0, 1, 1.0);
+            dot_radius = 0.2f;
+        } else {
+            glColor4f(1, 0, 0, 1.0);
+            dot_radius = 1.0f;
+        }
+
+#define NUM_DOT_SEGS 16
+
+        GLfloat vtx[3 * (NUM_DOT_SEGS + 2)];
+        unsigned int index_vtx = 0;
+
+        vtx[index_vtx++] = point[0];
+        vtx[index_vtx++] = point[1];
+        vtx[index_vtx++] = point[2];
+
+        for (int i = 0; i <= NUM_DOT_SEGS; i++) {
+            float angle = (2.0f * M_PI * i) / NUM_DOT_SEGS;
+            vtx[index_vtx++] = point[0] + dot_radius * vup[0] * cosf(angle) + dot_radius * vright[0] * sinf(angle);
+            vtx[index_vtx++] = point[1] + dot_radius * vup[1] * cosf(angle) + dot_radius * vright[1] * sinf(angle);
+            vtx[index_vtx++] = point[2] + dot_radius * vup[2] * cosf(angle) + dot_radius * vright[2] * sinf(angle);
+        }
+
+        glEnableClientState(GL_VERTEX_ARRAY);
+        glVertexPointer(3, GL_FLOAT, 0, vtx);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, NUM_DOT_SEGS + 2);
+        glDisableClientState(GL_VERTEX_ARRAY);
+
+        glEnable(GL_TEXTURE_2D);
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+    }
 }
 
 /* R_DrawBeam */
@@ -1866,6 +2056,9 @@ extern void RI_SetPalette(const unsigned char *palette);
 extern qboolean RI_IsVSyncActive(void);
 extern void RI_EndFrame(void);
 
+void initialize_gl4es();
+
+
 Q2_DLL_EXPORTED refexport_t
 GetRefAPI(refimport_t imp)
 {
@@ -1907,6 +2100,8 @@ GetRefAPI(refimport_t imp)
 	re.SetPalette = RI_SetPalette;
 	re.BeginFrame = RI_BeginFrame;
 	re.EndFrame = RI_EndFrame;
+
+	re.SetMode = R_SetMode;
 
 	return re;
 }

@@ -32,8 +32,9 @@
 #include "shared.h"
 #include "crc.h"
 
+#define Q2QVERSION "1.1.1"
 #define YQ2VERSION "7.41"
-#define BASEDIRNAME "baseq2"
+#define BASEDIRNAME "Quake2Quest"
 
 #ifndef YQ2OSTYPE
 #error YQ2OSTYPE should be defined by the build system
@@ -158,6 +159,13 @@ void Info_Print(char *s);
 #define UPDATE_BACKUP 16    /* copies of entity_state_t to keep buffered */
 #define UPDATE_MASK (UPDATE_BACKUP - 1)
 
+
+/* ========================================= */
+
+#define QUAKE_MARINE_HEIGHT   1.57
+
+/* ========================================= */
+
 /* server to client */
 enum svc_ops_e
 {
@@ -219,6 +227,8 @@ enum clc_ops_e
 #define PS_WEAPONINDEX (1 << 12)
 #define PS_WEAPONFRAME (1 << 13)
 #define PS_RDFLAGS (1 << 14)
+
+#define	PS_VRSERVER			(1<<15)
 
 /*============================================== */
 
@@ -753,7 +763,9 @@ void Z_FreeTags(int tag);
 void Qcommon_Init(int argc, char **argv);
 void Qcommon_ExecConfigs(qboolean addEarlyCmds);
 const char* Qcommon_GetInitialGame(void);
-void Qcommon_Frame(int msec);
+void Qcommon_BeginFrame(int msec);
+void Qcommon_Frame(int eye);
+void Qcommon_EndFrame(int msec);
 void Qcommon_Shutdown(void);
 
 #define NUMVERTEXNORMALS 162
@@ -767,10 +779,13 @@ void SCR_DebugGraph(float value, int color);
 void CL_Init(void);
 void CL_Drop(void);
 void CL_Shutdown(void);
-void CL_Frame(int packetdelta, int renderdelta, int timedelta, qboolean packetframe, qboolean renderframe);
+void CL_BeginFrame(int packetdelta, int renderdelta, int timedelta, qboolean packetframe, qboolean renderframe);
+void CL_Frame(int eye, qboolean renderframe);
+void CL_EndFrame(int msec, qboolean renderframe);
 void Con_Print(char *text);
 void SCR_BeginLoadingPlaque(void);
 
+void VR_Init(void);
 void SV_Init(void);
 void SV_Shutdown(char *finalmsg, qboolean reconnect);
 void SV_Frame(int msec);

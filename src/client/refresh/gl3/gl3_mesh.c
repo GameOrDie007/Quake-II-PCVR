@@ -634,6 +634,8 @@ CullAliasModel(vec3_t bbox[8], entity_t *e)
 	return false;
 }
 
+extern cvar_t *vr_weaponscale;
+void MYgluPerspective( GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar );
 void
 GL3_DrawAliasModel(entity_t *entity)
 {
@@ -804,10 +806,14 @@ GL3_DrawAliasModel(entity_t *entity)
 	if (entity->flags & RF_DEPTHHACK)
 	{
 		/* hack the depth range to prevent view model from poking into walls */
+#ifdef USE_GLES3
+		glDepthRangef(gl3depthmin, gl3depthmin + 0.3 * (gl3depthmax - gl3depthmin));
+#else
 		glDepthRange(gl3depthmin, gl3depthmin + 0.3 * (gl3depthmax - gl3depthmin));
+#endif
 	}
 
-	if (entity->flags & RF_WEAPONMODEL)
+/*	if (entity->flags & RF_WEAPONMODEL)
 	{
 		extern hmm_mat4 GL3_MYgluPerspective(GLdouble fovy, GLdouble aspect, GLdouble zNear, GLdouble zFar);
 
@@ -830,7 +836,7 @@ GL3_DrawAliasModel(entity_t *entity)
 
 			glCullFace(GL_BACK);
 		}
-	}
+	}*/
 
 
 	//glPushMatrix();
@@ -839,6 +845,19 @@ GL3_DrawAliasModel(entity_t *entity)
 	entity->angles[PITCH] = -entity->angles[PITCH];
 	GL3_RotateForEntity(entity);
 	entity->angles[PITCH] = -entity->angles[PITCH];
+
+	if ( currententity->flags & RF_WEAPONMODEL )
+	{
+		if ( gl_lefthand->value == 1.0F ) {
+			qglScalef(vr_weaponscale->value, -vr_weaponscale->value, vr_weaponscale->value);
+		} else {
+			qglScalef(vr_weaponscale->value, vr_weaponscale->value, vr_weaponscale->value);
+		}
+
+		if ( gl_lefthand->value == 1.0F ) {
+			glCullFace( GL_BACK );
+		}
+	}
 
 
 	/* select skin */
@@ -915,7 +934,11 @@ GL3_DrawAliasModel(entity_t *entity)
 
 	if (entity->flags & RF_DEPTHHACK)
 	{
+#ifdef USE_GLES3
+		glDepthRangef(gl3depthmin, gl3depthmax);
+#else
 		glDepthRange(gl3depthmin, gl3depthmax);
+#endif
 	}
 
 	if (gl_shadows->value && gl3config.stencil && !(entity->flags & (RF_TRANSLUCENT | RF_WEAPONMODEL | RF_NOSHADOW)))

@@ -1255,8 +1255,9 @@ IN_Init(void)
 	Cmd_AddCommand("+joyaltselector", IN_JoyAltSelectorDown);
 	Cmd_AddCommand("-joyaltselector", IN_JoyAltSelectorUp);
 
+#ifndef __ANDROID__
 	SDL_StartTextInput();
-
+#endif
 	/* Joystick init */
 	if (!SDL_WasInit(SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC))
 	{

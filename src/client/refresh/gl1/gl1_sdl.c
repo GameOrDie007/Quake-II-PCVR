@@ -27,17 +27,23 @@
 
 #include "header/local.h"
 
-#include <SDL2/SDL.h>
+//#include <SDL2/SDL.h>
 
 #if defined(__APPLE__)
 #include <OpenGL/gl.h>
 #else
+
+#ifdef USE_GLES1
+#include <GLES/gl.h>
+#else
 #include <GL/gl.h>
 #endif
 
-static SDL_Window* window = NULL;
-static SDL_GLContext context = NULL;
-static qboolean vsyncActive = false;
+#endif
+
+//static SDL_Window* window = NULL;
+//static SDL_GLContext context = NULL;
+//static qboolean vsyncActive = false;
 
 // ----
 
@@ -47,7 +53,7 @@ static qboolean vsyncActive = false;
 void
 RI_EndFrame(void)
 {
-	SDL_GL_SwapWindow(window);
+//	SDL_GL_SwapWindow(window);
 }
 
 /*
@@ -56,7 +62,8 @@ RI_EndFrame(void)
 void *
 RI_GetProcAddress(const char* proc)
 {
-	return SDL_GL_GetProcAddress(proc);
+	return NULL;
+//	return SDL_GL_GetProcAddress(proc);
 }
 
 /*
@@ -64,7 +71,7 @@ RI_GetProcAddress(const char* proc)
  */
 qboolean RI_IsVSyncActive(void)
 {
-	return vsyncActive;
+	return true;
 }
 
 /*
@@ -75,10 +82,14 @@ qboolean RI_IsVSyncActive(void)
 int RI_PrepareForWindow(void)
 {
 	// Set GL context attributs bound to the window.
-	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+/*	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+#ifdef __ANDROID__
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+#else
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+#endif
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
 	if (SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8) == 0)
@@ -121,8 +132,8 @@ int RI_PrepareForWindow(void)
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
 		SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
 	}
-
-	return SDL_WINDOW_OPENGL;
+*/
+	return 0;//SDL_WINDOW_OPENGL;
 }
  
 /*
@@ -130,8 +141,8 @@ int RI_PrepareForWindow(void)
  */
 void RI_SetVsync(void)
 {
-	SDL_GL_SetSwapInterval(r_vsync->value ? 1 : 0);
-	vsyncActive = SDL_GL_GetSwapInterval() != 0;
+//	SDL_GL_SetSwapInterval(r_vsync->value ? 1 : 0);
+//	vsyncActive = SDL_GL_GetSwapInterval() != 0;
 }
 
 /*
@@ -142,12 +153,12 @@ RI_UpdateGamma(void)
 {
 	float gamma = (vid_gamma->value);
 
-	Uint16 ramp[256];
-	SDL_CalculateGammaRamp(gamma, ramp);
+//	Uint16 ramp[256];
+//	SDL_CalculateGammaRamp(gamma, ramp);
 
-	if (SDL_SetWindowGammaRamp(window, ramp, ramp, ramp) != 0)
+//	if (SDL_SetWindowGammaRamp(window, ramp, ramp, ramp) != 0)
 	{
-		R_Printf(PRINT_ALL, "Setting gamma failed: %s\n", SDL_GetError());
+//		R_Printf(PRINT_ALL, "Setting gamma failed: %s\n", SDL_GetError());
 	}
 }
 
@@ -158,7 +169,7 @@ RI_UpdateGamma(void)
 int RI_InitContext(void* win)
 {
 	// Coders are stupid.
-	if (win == NULL)
+/*	if (win == NULL)
 	{
 		ri.Sys_Error(ERR_FATAL, "R_InitContext() must not be called with NULL argument!");
 
@@ -183,6 +194,11 @@ int RI_InitContext(void* win)
 	const char* glver = (char *)glGetString(GL_VERSION);
 	sscanf(glver, "%d.%d", &gl_config.major_version, &gl_config.minor_version);
 
+#ifdef USE_GLES1
+	R_Printf( PRINT_ALL, "glver = %s", glver );
+	gl_config.major_version = 1;
+	gl_config.minor_version = 4;
+#endif
 	if (gl_config.major_version < 1 || (gl_config.major_version == 1 && gl_config.minor_version < 4))
 	{
 		R_Printf(PRINT_ALL, "R_InitContext(): Got an OpenGL version %d.%d context - need (at least) 1.4!\n", gl_config.major_version, gl_config.minor_version);
@@ -223,7 +239,7 @@ int RI_InitContext(void* win)
 
 	snprintf(title, sizeof(title), "Yamagi Quake II %s - OpenGL 1.4", YQ2VERSION);
 	SDL_SetWindowTitle(window, title);
-
+*/
 	return true;
 }
 
@@ -233,12 +249,12 @@ int RI_InitContext(void* win)
 void
 RI_ShutdownContext(void)
 {
-	if (window)
+/*	if (window)
 	{
 		if(context)
 		{
 			SDL_GL_DeleteContext(context);
 			context = NULL;
 		}
-	}
+	}*/
 }

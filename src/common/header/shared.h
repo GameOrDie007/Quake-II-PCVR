@@ -138,12 +138,19 @@ typedef enum
  */
 
 typedef float vec_t;
+typedef vec_t vec2_t[2];
 typedef vec_t vec3_t[3];
+typedef vec_t vec4_t[4];
 typedef vec_t vec5_t[5];
 
 typedef int fixed4_t;
 typedef int fixed8_t;
 typedef int fixed16_t;
+
+typedef vec_t		matrix3x4[3][4];
+typedef vec_t		matrix4x4[4][4];
+
+typedef unsigned short       word;
 
 #ifndef M_PI
  #define M_PI 3.14159265358979323846 /* matches value in gcc v2 math.h */
@@ -221,6 +228,13 @@ void RotatePointAroundVector(vec3_t dst,
 		const vec3_t dir,
 		const vec3_t point,
 		float degrees);
+
+
+/* ============================================= */
+
+void Android_Vibrate( float duration, int channel, float intensity );
+void getVROrigins(vec3_t weaponoffset, vec3_t weaponangles, vec3_t hmdPosition);
+float getFOV();
 
 /* ============================================= */
 
@@ -518,12 +532,12 @@ typedef struct
 {
 	pmtype_t pm_type;
 
-	short origin[3];            /* 12.3 */
-	short velocity[3];          /* 12.3 */
+	float origin[3];            /* 12.3 */
+	float velocity[3];          /* 12.3 */
 	byte pm_flags;              /* ducked, jump_held, etc */
 	byte pm_time;               /* each unit = 8 ms */
-	short gravity;
-	short delta_angles[3];      /* add to command angles to get view direction
+	float gravity;
+	float delta_angles[3];      /* add to command angles to get view direction
 								 * changed by spawns, rotating objects, and teleporters */
 } pmove_state_t;
 
@@ -538,7 +552,7 @@ typedef struct usercmd_s
 	byte msec;
 	byte buttons;
 	short angles[3];
-	short forwardmove, sidemove, upmove;
+	float forwardmove, sidemove, upmove;
 	byte impulse;           /* remove? */
 	byte lightlevel;        /* light level the player is standing on */
 } usercmd_t;
@@ -627,6 +641,7 @@ typedef struct
 #define RF_SHELL_DOUBLE 0x00010000          /* 65536 */
 #define RF_SHELL_HALF_DAM 0x00020000
 #define RF_USE_DISGUISE 0x00040000
+#define RF_LASERSIGHT	0x00080000
 
 /* player_state_t->refdef flags */
 #define RDF_UNDERWATER 1            /* warp the screen as apropriate */
@@ -956,7 +971,8 @@ typedef enum
 	TE_WIDOWSPLASH,
 	TE_EXPLOSION1_BIG,
 	TE_EXPLOSION1_NP,
-	TE_FLECHETTE
+	TE_FLECHETTE,
+	TE_LASER_SIGHT
 } temp_event_t;
 
 #define SPLASH_UNKNOWN 0
@@ -1129,6 +1145,7 @@ typedef struct
 	vec3_t gunoffset;
 	int gunindex;
 	int gunframe;
+	int weapmodel;
 
 	float blend[4];             /* rgba full screen effect */
 	float fov;                  /* horizontal field of view */

@@ -354,7 +354,7 @@ Key_Console(int key)
 
 		if (cls.state == ca_disconnected)
 		{
-			SCR_UpdateScreen();  /* force an update, because the command
+			SCR_UpdateForEye(0);  /* force an update, because the command
 								   	may take some time */
 		}
 
@@ -1036,6 +1036,10 @@ Key_Init(void)
 	Cmd_AddCommand("unbind", Key_Unbind_f);
 	Cmd_AddCommand("unbindall", Key_Unbindall_f);
 	Cmd_AddCommand("bindlist", Key_Bindlist_f);
+
+#ifdef __ANDROID__
+    anykeydown = 0;
+#endif
 }
 
 /*

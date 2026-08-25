@@ -517,6 +517,8 @@ CL_ParsePacketEntities(frame_t *oldframe, frame_t *newframe)
 	}
 }
 
+qboolean isMultiplayer();
+
 void
 CL_ParsePlayerstate(frame_t *oldframe, frame_t *newframe)
 {
@@ -546,18 +548,30 @@ CL_ParsePlayerstate(frame_t *oldframe, frame_t *newframe)
 		state->pmove.pm_type = MSG_ReadByte(&net_message);
 	}
 
-	if (flags & PS_M_ORIGIN)
-	{
-		state->pmove.origin[0] = MSG_ReadShort(&net_message);
-		state->pmove.origin[1] = MSG_ReadShort(&net_message);
-		state->pmove.origin[2] = MSG_ReadShort(&net_message);
-	}
+	if (flags & PS_VRSERVER) {
+		if (flags & PS_M_ORIGIN) {
+			state->pmove.origin[0] = MSG_ReadFloat(&net_message);
+			state->pmove.origin[1] = MSG_ReadFloat(&net_message);
+			state->pmove.origin[2] = MSG_ReadFloat(&net_message);
+		}
 
-	if (flags & PS_M_VELOCITY)
-	{
-		state->pmove.velocity[0] = MSG_ReadShort(&net_message);
-		state->pmove.velocity[1] = MSG_ReadShort(&net_message);
-		state->pmove.velocity[2] = MSG_ReadShort(&net_message);
+		if (flags & PS_M_VELOCITY) {
+			state->pmove.velocity[0] = MSG_ReadFloat(&net_message);
+			state->pmove.velocity[1] = MSG_ReadFloat(&net_message);
+			state->pmove.velocity[2] = MSG_ReadFloat(&net_message);
+		}
+	} else {
+		if (flags & PS_M_ORIGIN) {
+			state->pmove.origin[0] = MSG_ReadShort(&net_message);
+			state->pmove.origin[1] = MSG_ReadShort(&net_message);
+			state->pmove.origin[2] = MSG_ReadShort(&net_message);
+		}
+
+		if (flags & PS_M_VELOCITY) {
+			state->pmove.velocity[0] = MSG_ReadShort(&net_message);
+			state->pmove.velocity[1] = MSG_ReadShort(&net_message);
+			state->pmove.velocity[2] = MSG_ReadShort(&net_message);
+		}
 	}
 
 	if (flags & PS_M_TIME)
@@ -570,16 +584,25 @@ CL_ParsePlayerstate(frame_t *oldframe, frame_t *newframe)
 		state->pmove.pm_flags = MSG_ReadByte(&net_message);
 	}
 
-	if (flags & PS_M_GRAVITY)
-	{
-		state->pmove.gravity = MSG_ReadShort(&net_message);
-	}
+	if (flags & PS_VRSERVER) {
+		if (flags & PS_M_GRAVITY)
+			state->pmove.gravity = MSG_ReadFloat(&net_message);
 
-	if (flags & PS_M_DELTA_ANGLES)
-	{
-		state->pmove.delta_angles[0] = MSG_ReadShort(&net_message);
-		state->pmove.delta_angles[1] = MSG_ReadShort(&net_message);
-		state->pmove.delta_angles[2] = MSG_ReadShort(&net_message);
+		if (flags & PS_M_DELTA_ANGLES) {
+			state->pmove.delta_angles[0] = MSG_ReadFloat(&net_message);
+			state->pmove.delta_angles[1] = MSG_ReadFloat(&net_message);
+			state->pmove.delta_angles[2] = MSG_ReadFloat(&net_message);
+		}
+	} else {
+		if (flags & PS_M_GRAVITY) {
+			state->pmove.gravity = MSG_ReadShort(&net_message);
+		}
+
+		if (flags & PS_M_DELTA_ANGLES) {
+			state->pmove.delta_angles[0] = MSG_ReadShort(&net_message);
+			state->pmove.delta_angles[1] = MSG_ReadShort(&net_message);
+			state->pmove.delta_angles[2] = MSG_ReadShort(&net_message);
+		}
 	}
 
 	if (cl.attractloop)
@@ -612,6 +635,12 @@ CL_ParsePlayerstate(frame_t *oldframe, frame_t *newframe)
 	if (flags & PS_WEAPONINDEX)
 	{
 		state->gunindex = MSG_ReadByte(&net_message);
+
+		if (flags & PS_VRSERVER) {
+			state->weapmodel = MSG_ReadByte(&net_message);
+		} else {
+			state->weapmodel = 0;
+		}
 	}
 
 	if (flags & PS_WEAPONFRAME)

@@ -36,7 +36,23 @@
 #if defined(__APPLE__)
 #include <OpenGL/gl.h>
 #else
+
+#ifdef USE_GLES1
+
+#include <GLES/gl.h>
+//#define GLdouble double
+//#define glDepthRange glDepthRangef
+//#define glOrtho      glOrthof
+//#define glFrustum    glFrustumf
+
+#elif USE_GLES3
+
+#include <GLES3/gl3.h>
+
+#else
 #include <GL/gl.h>
+#endif
+
 #endif
 
 #ifndef APIENTRY

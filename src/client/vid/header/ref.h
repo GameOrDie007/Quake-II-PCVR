@@ -130,7 +130,7 @@ typedef struct
 	int		api_version;
 
 	// called when the library is loaded
-	qboolean (EXPORT *Init) (void);
+	qboolean (EXPORT *Init) (int hmdType);
 
 	// called before the library is unloaded
 	void	(EXPORT *Shutdown) (void);
@@ -192,6 +192,8 @@ typedef struct
 	void	(EXPORT *SetPalette)( const unsigned char *palette);	// NULL = game palette
 	void	(EXPORT *BeginFrame)( float camera_separation );
 	void	(EXPORT *EndFrame) (void);
+
+	qboolean (EXPORT *SetMode) (void);
 
 	//void	(EXPORT *AppActivate)( qboolean activate );
 } refexport_t;
@@ -267,5 +269,6 @@ void Draw_StretchRaw(int x, int y, int w, int h, int cols, int rows, byte *data)
 void R_SetPalette(const unsigned char *palette);
 void R_BeginFrame(float camera_separation);
 void R_EndFrame(void);
+qboolean R_SetMode(void);
 
 #endif

@@ -71,17 +71,12 @@ cvar_t *cl_lightlevel;
 cvar_t *name;
 cvar_t *skin;
 cvar_t *rate;
-cvar_t *fov;
 cvar_t *horplus;
 cvar_t *windowed_mouse;
 cvar_t *msg;
 cvar_t *hand;
 cvar_t *gender;
 cvar_t *gender_auto;
-
-cvar_t	*gl1_stereo;
-cvar_t	*gl1_stereo_separation;
-cvar_t	*gl1_stereo_convergence;
 
 cvar_t *cl_vwep;
 
@@ -363,7 +358,7 @@ CL_Skins_f(void)
 
 		Com_Printf("client %i: %s\n", i, cl.configstrings[CS_PLAYERSKINS + i]);
 
-		SCR_UpdateScreen();
+		SCR_UpdateForEye(0);
 
 		IN_Update();  /* pump message loop */
 
@@ -502,9 +497,9 @@ CL_InitLocal(void)
 	cl_predict = Cvar_Get("cl_predict", "1", 0);
 	cl_showfps = Cvar_Get("cl_showfps", "0", CVAR_ARCHIVE);
 
-	cl_upspeed = Cvar_Get("cl_upspeed", "200", 0);
-	cl_forwardspeed = Cvar_Get("cl_forwardspeed", "200", 0);
-	cl_sidespeed = Cvar_Get("cl_sidespeed", "200", 0);
+	cl_upspeed = Cvar_Get("cl_upspeed", "150", 0);
+	cl_forwardspeed = Cvar_Get("cl_forwardspeed", "150", 0);
+	cl_sidespeed = Cvar_Get("cl_sidespeed", "150", 0);
 	cl_yawspeed = Cvar_Get("cl_yawspeed", "140", 0);
 	cl_pitchspeed = Cvar_Get("cl_pitchspeed", "150", 0);
 	cl_anglespeedkey = Cvar_Get("cl_anglespeedkey", "1.5", 0);
@@ -525,10 +520,6 @@ CL_InitLocal(void)
 	cl_timeout = Cvar_Get("cl_timeout", "120", 0);
 	cl_paused = Cvar_Get("paused", "0", 0);
 
-	gl1_stereo = Cvar_Get( "gl1_stereo", "0", CVAR_ARCHIVE );
-	gl1_stereo_separation = Cvar_Get( "gl1_stereo_separation", "1", CVAR_ARCHIVE );
-	gl1_stereo_convergence = Cvar_Get( "gl1_stereo_convergence", "1.4", CVAR_ARCHIVE );
-
 	rcon_client_password = Cvar_Get("rcon_password", "", 0);
 	rcon_address = Cvar_Get("rcon_address", "", 0);
 
@@ -540,8 +531,7 @@ CL_InitLocal(void)
 	rate = Cvar_Get("rate", "8000", CVAR_USERINFO | CVAR_ARCHIVE);
 	msg = Cvar_Get("msg", "1", CVAR_USERINFO | CVAR_ARCHIVE);
 	hand = Cvar_Get("hand", "0", CVAR_USERINFO | CVAR_ARCHIVE);
-	fov = Cvar_Get("fov", "90", CVAR_USERINFO | CVAR_ARCHIVE);
-	horplus = Cvar_Get("horplus", "1", CVAR_ARCHIVE);
+	horplus = Cvar_Get("horplus", "0", CVAR_ARCHIVE);
 	windowed_mouse = Cvar_Get("windowed_mouse", "1", CVAR_USERINFO | CVAR_ARCHIVE);
 	gender = Cvar_Get("gender", "male", CVAR_USERINFO | CVAR_ARCHIVE);
 	gender_auto = Cvar_Get("gender_auto", "1", CVAR_ARCHIVE);
@@ -731,13 +721,9 @@ CL_UpdateWindowedMouse(void)
 }
 
 void
-CL_Frame(int packetdelta, int renderdelta, int timedelta, qboolean packetframe, qboolean renderframe)
-{
-	static int lasttimecalled;
-
+CL_BeginFrame(int packetdelta, int renderdelta, int timedelta, qboolean packetframe, qboolean renderframe) {
 	// Dedicated?
-	if (dedicated->value)
-	{
+	if (dedicated->value) {
 		return;
 	}
 
@@ -748,69 +734,58 @@ CL_Frame(int packetdelta, int renderdelta, int timedelta, qboolean packetframe, 
 	cl.time += timedelta / 1000;
 
 	// Don't extrapolate too far ahead.
-	if (cls.nframetime > 0.5f)
-	{
+	if (cls.nframetime > 0.5f) {
 		cls.nframetime = 0.5f;
 	}
 
-	if (cls.rframetime > 0.5f)
-	{
+	if (cls.rframetime > 0.5f) {
 		cls.rframetime = 0.5f;
 	}
 
 	// if in the debugger last frame, don't timeout.
-	if (timedelta > 5000000)
-	{
+	if (timedelta > 5000000) {
 		cls.netchan.last_received = Sys_Milliseconds();
 	}
 
 	// Reset power shield / power screen sound counter.
 	num_power_sounds = 0;
 
-	if (!cl_timedemo->value)
-	{
+	if (!cl_timedemo->value) {
 		// Don't throttle too much when connecting / loading.
-		if ((cls.state == ca_connected) && (packetdelta > 100000))
-		{
+		if ((cls.state == ca_connected) && (packetdelta > 100000)) {
 			packetframe = true;
 		}
 	}
 
 	// Run HTTP downloads more often while connecting.
 #ifdef USE_CURL
-	if (cls.state == ca_connected)
-	{
-		CL_RunHTTPDownloads();
-	}
+    if (cls.state == ca_connected)
+    {
+        CL_RunHTTPDownloads();
+    }
 #endif
 
 	// Update input stuff.
-	if (packetframe || renderframe)
-	{
+	if (packetframe || renderframe) {
 		CL_ReadPackets();
 		CL_UpdateWindowedMouse();
 		IN_Update();
 		Cbuf_Execute();
 		CL_FixCvarCheats();
 
-		if (cls.state > ca_connecting)
-		{
+		if (cls.state > ca_connecting) {
 			CL_RefreshCmd();
-		}
-		else
-		{
+		} else {
 			CL_RefreshMove();
 		}
 	}
 
-	if (cls.forcePacket || userinfo_modified)
-	{
+	if (cls.forcePacket || userinfo_modified) {
 		packetframe = true;
 		cls.forcePacket = false;
 	}
 
-	if (packetframe)
-	{
+	if (packetframe) {
 		CL_SendCmd();
 		CL_CheckForResend();
 
@@ -820,24 +795,37 @@ CL_Frame(int packetdelta, int renderdelta, int timedelta, qboolean packetframe, 
 #endif
 	}
 
-	if (renderframe)
-	{
+	if (renderframe) {
 		VID_CheckChanges();
 		CL_PredictMovement();
 
-		if (!cl.refresh_prepped && (cls.state == ca_active))
-		{
+		if (!cl.refresh_prepped && (cls.state == ca_active)) {
 			CL_PrepRefresh();
 		}
 
 		/* update the screen */
-		if (host_speeds->value)
-		{
+		if (host_speeds->value) {
 			time_before_ref = Sys_Milliseconds();
 		}
+	}
+}
 
-		SCR_UpdateScreen();
+void CL_Frame(int eye, qboolean renderframe) {
 
+	//Always draw!
+	SCR_UpdateForEye(eye);
+}
+
+void SCR_Framecounter(void);
+
+void CL_EndFrame(int eye, qboolean renderframe)
+{
+	static int lasttimecalled;
+
+    SCR_Framecounter();
+
+	if (renderframe)
+	{
 		if (host_speeds->value)
 		{
 			time_after_ref = Sys_Milliseconds();
@@ -902,7 +890,7 @@ CL_Init(void)
 
 	VID_Init();
 
-	IN_Init();
+	//IN_Init();
 
 	V_Init();
 

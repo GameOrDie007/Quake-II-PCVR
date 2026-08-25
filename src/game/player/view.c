@@ -107,6 +107,10 @@ P_DamageFeedback(edict_t *player)
 		return; /* didn't take any damage */
 	}
 
+	//Haptic
+	gi.HapticVibrate(fmin(count * 5, 150), 0, 0.6);
+    gi.HapticVibrate(fmin(count * 5, 150), 1, 0.6);
+
 	/* start a pain animation if still in the player model */
 	if ((client->anim_priority < ANIM_PAIN) && (player->s.modelindex == 255))
 	{
@@ -264,82 +268,10 @@ P_DamageFeedback(edict_t *player)
 void
 SV_CalcViewOffset(edict_t *ent)
 {
-	float *angles;
 	float bob;
 	float ratio;
 	float delta;
 	vec3_t v;
-
-	/* base angles */
-	angles = ent->client->ps.kick_angles;
-
-	/* if dead, fix the angle and don't add any kick */
-	if (ent->deadflag)
-	{
-		VectorClear(angles);
-
-		ent->client->ps.viewangles[ROLL] = 40;
-		ent->client->ps.viewangles[PITCH] = -15;
-		ent->client->ps.viewangles[YAW] = ent->client->killer_yaw;
-	}
-	else
-	{
-		/* add angles based on weapon kick */
-		VectorCopy(ent->client->kick_angles, angles);
-
-		/* add angles based on damage kick */
-		ratio = (ent->client->v_dmg_time - level.time) / DAMAGE_TIME;
-
-		if (ratio < 0)
-		{
-			ratio = 0;
-			ent->client->v_dmg_pitch = 0;
-			ent->client->v_dmg_roll = 0;
-		}
-
-		angles[PITCH] += ratio * ent->client->v_dmg_pitch;
-		angles[ROLL] += ratio * ent->client->v_dmg_roll;
-
-		/* add pitch based on fall kick */
-		ratio = (ent->client->fall_time - level.time) / FALL_TIME;
-
-		if (ratio < 0)
-		{
-			ratio = 0;
-		}
-
-		angles[PITCH] += ratio * ent->client->fall_value;
-
-		/* add angles based on velocity */
-		delta = DotProduct(ent->velocity, forward);
-		angles[PITCH] += delta * run_pitch->value;
-
-		delta = DotProduct(ent->velocity, right);
-		angles[ROLL] += delta * run_roll->value;
-
-		/* add angles based on bob */
-		delta = bobfracsin * bob_pitch->value * xyspeed;
-
-		if (ent->client->ps.pmove.pm_flags & PMF_DUCKED)
-		{
-			delta *= 6; /* crouching */
-		}
-
-		angles[PITCH] += delta;
-		delta = bobfracsin * bob_roll->value * xyspeed;
-
-		if (ent->client->ps.pmove.pm_flags & PMF_DUCKED)
-		{
-			delta *= 6; /* crouching */
-		}
-
-		if (bobcycle & 1)
-		{
-			delta = -delta;
-		}
-
-		angles[ROLL] += delta;
-	}
 
 	/* base origin */
 	VectorClear(v);
@@ -365,10 +297,10 @@ SV_CalcViewOffset(edict_t *ent)
 		bob = 6;
 	}
 
-	v[2] += bob;
+	//v[2] += bob;
 
 	/* add kick offset */
-	VectorAdd(v, ent->client->kick_origin, v);
+	//VectorAdd(v, ent->client->kick_origin, v);
 
 	/* absolutely bound offsets
 	   so the view can never be
@@ -406,69 +338,7 @@ SV_CalcViewOffset(edict_t *ent)
 void
 SV_CalcGunOffset(edict_t *ent)
 {
-	int i;
-	float delta;
-
-	if (!ent)
-	{
-		return;
-	}
-
-	/* gun angles from bobbing */
-	ent->client->ps.gunangles[ROLL] = xyspeed * bobfracsin * 0.005;
-	ent->client->ps.gunangles[YAW] = xyspeed * bobfracsin * 0.01;
-
-	if (bobcycle & 1)
-	{
-		ent->client->ps.gunangles[ROLL] = -ent->client->ps.gunangles[ROLL];
-		ent->client->ps.gunangles[YAW] = -ent->client->ps.gunangles[YAW];
-	}
-
-	ent->client->ps.gunangles[PITCH] = xyspeed * bobfracsin * 0.005;
-
-	/* gun angles from delta movement */
-	for (i = 0; i < 3; i++)
-	{
-		delta = ent->client->oldviewangles[i] - ent->client->ps.viewangles[i];
-
-		if (delta > 180)
-		{
-			delta -= 360;
-		}
-
-		if (delta < -180)
-		{
-			delta += 360;
-		}
-
-		if (delta > 45)
-		{
-			delta = 45;
-		}
-
-		if (delta < -45)
-		{
-			delta = -45;
-		}
-
-		if (i == YAW)
-		{
-			ent->client->ps.gunangles[ROLL] += 0.1 * delta;
-		}
-
-		ent->client->ps.gunangles[i] += 0.2 * delta;
-	}
-
-	/* gun height */
-	VectorClear(ent->client->ps.gunoffset);
-
-	/* gun_x / gun_y / gun_z are development tools */
-	for (i = 0; i < 3; i++)
-	{
-		ent->client->ps.gunoffset[i] += forward[i] * (gun_y->value);
-		ent->client->ps.gunoffset[i] += right[i] * gun_x->value;
-		ent->client->ps.gunoffset[i] += up[i] * (-gun_z->value);
-	}
+	//do nothing
 }
 
 void
@@ -1258,7 +1128,7 @@ ClientEndServerFrame(edict_t *ent)
 	if (level.intermissiontime)
 	{
 		current_client->ps.blend[3] = 0;
-		current_client->ps.fov = 90;
+		current_client->ps.fov = gi.getFOV();
 		G_SetStats(ent);
 		return;
 	}
@@ -1360,6 +1230,11 @@ ClientEndServerFrame(edict_t *ent)
 
 	VectorCopy(ent->velocity, ent->client->oldvelocity);
 	VectorCopy(ent->client->ps.viewangles, ent->client->oldviewangles);
+
+	/* Expose this frame's weapon recoil to the client via the player_state so the VR
+	 * laser sight can follow the exact same kick the bullets are fired along (the view
+	 * itself is deliberately not kicked in VR). Must happen before the kick is cleared. */
+	VectorCopy(ent->client->kick_angles, ent->client->ps.kick_angles);
 
 	/* clear weapon kicks */
 	VectorClear(ent->client->kick_origin);

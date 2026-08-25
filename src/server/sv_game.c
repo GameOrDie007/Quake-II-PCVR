@@ -430,6 +430,10 @@ SV_InitGameProgs(void)
 	import.cvar_set = Cvar_Set;
 	import.cvar_forceset = Cvar_ForceSet;
 
+	import.HapticVibrate = Android_Vibrate;
+	import.getVROrigins = getVROrigins;
+	import.getFOV = getFOV;
+
 	import.argc = Cmd_Argc;
 	import.argv = Cmd_Argv;
 	import.args = Cmd_Args;
