@@ -470,33 +470,44 @@ q2xrFramebuffer_Create(q2xrFramebuffer *fb, int width, int height)
 	gl.BindRenderbuffer(GL_RENDERBUFFER, fb->MsaaColour);
 
 	/*
-	 * GL_RGBA8, deliberately, even though the swapchain image is sRGB.
+	 * The format of this buffer decides the overall brightness, because a blit
+	 * converts between colour spaces and their build never performs one.
 	 *
-	 * The engine renders with GL_FRAMEBUFFER_SRGB disabled, so it writes raw
-	 * values and expects them to land untouched - which is what happens in
-	 * their build, because the GLES implicit-resolve extension renders straight
-	 * into the swapchain texture.
+	 * sRGB (vr_srgb 1, the default): the blit reads an sRGB source, so every
+	 * pixel is linearised on the way out, and writing into the sRGB swapchain
+	 * with GL_FRAMEBUFFER_SRGB disabled stores that linearised value raw. One
+	 * uncancelled sRGB-to-linear conversion across the frame, which is darker.
+	 * That is what the Quest build looks like, so it is what a port of it
+	 * should look like.
 	 *
-	 * Resolving explicitly puts a blit in the path, and a blit *reads* the
-	 * source. Had this buffer been sRGB, that read would linearise every pixel,
-	 * and writing it into the sRGB destination with GL_FRAMEBUFFER_SRGB
-	 * disabled would store the linearised value raw - one uncancelled
-	 * sRGB-to-linear conversion across the whole image, which shows up as
-	 * darker, flatter, less saturated colour.
+	 * Linear (vr_srgb 0): read raw, write raw, no conversion anywhere. This is
+	 * arguably the "correct" pipeline - the engine already outputs gamma-space
+	 * colour, so the swapchain receives exactly what was drawn - but it is
+	 * visibly brighter than the standalone.
 	 *
-	 * With linear storage here the blit reads raw and writes raw, so the
-	 * pixels reach the compositor exactly as they would have from their direct
-	 * render.
+	 * Which is right is a question about the Adreno driver rather than about
+	 * their source, and cannot be settled by reading their code. The evidence
+	 * settles it instead: the standalone is darker than this port at its
+	 * darkest lightmap setting, and linearising on resolve is the only
+	 * remaining difference big enough to account for it.
+	 *
+	 * Format is fixed when the buffer is created, so changing vr_srgb needs a
+	 * restart.
 	 */
-	if (fb->Samples > 1 && gl.RenderbufferStorageMultisample)
 	{
-		gl.RenderbufferStorageMultisample(GL_RENDERBUFFER, fb->Samples,
-				GL_RGBA8, width, height);
-	}
-	else
-	{
-		fb->Samples = 0;
-		gl.RenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
+		cvar_t *srgb = Cvar_Get("vr_srgb", "1", CVAR_ARCHIVE);
+		GLenum colourFormat = (srgb->value != 0.0f) ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+
+		if (fb->Samples > 1 && gl.RenderbufferStorageMultisample)
+		{
+			gl.RenderbufferStorageMultisample(GL_RENDERBUFFER, fb->Samples,
+					colourFormat, width, height);
+		}
+		else
+		{
+			fb->Samples = 0;
+			gl.RenderbufferStorage(GL_RENDERBUFFER, colourFormat, width, height);
+		}
 	}
 
 	gl.GenRenderbuffers(1, &fb->MsaaDepth);
@@ -598,32 +609,9 @@ q2xrFramebuffer_Acquire(q2xrFramebuffer *fb)
 static void
 q2xrFramebuffer_Resolve(q2xrFramebuffer *fb)
 {
-	/*
-	 * vr_srgb decides whether the resolve re-encodes into the sRGB swapchain.
-	 *
-	 * The engine renders with GL_FRAMEBUFFER_SRGB disabled, so it writes
-	 * gamma-space values and the raw copy (0) reproduces what a desktop GL
-	 * driver would put in front of the compositor. But GLES has no
-	 * GL_FRAMEBUFFER_SRGB unless EXT_sRGB_write_control is present; where it is
-	 * absent, writes into an sRGB framebuffer are encoded automatically, which
-	 * would make their Quest build brighter and more saturated than a literal
-	 * port of the same code on desktop.
-	 *
-	 * Which of those the standalone actually does is a property of the Adreno
-	 * driver, not of their source, so it cannot be settled by reading their
-	 * code. This is a switch rather than a guess: 1 encodes on resolve, and can
-	 * be toggled live to compare against the standalone.
-	 */
-	cvar_t *srgb = Cvar_Get("vr_srgb", "0", CVAR_ARCHIVE);
-
-	if (srgb->value != 0.0f)
-	{
-		glEnable(GL_FRAMEBUFFER_SRGB);
-	}
-	else
-	{
-		glDisable(GL_FRAMEBUFFER_SRGB);
-	}
+	/* Never encode on write - the conversion that matters happens on read, and
+	   is decided by the multisample buffer's format. See q2xrFramebuffer_Create. */
+	glDisable(GL_FRAMEBUFFER_SRGB);
 
 	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, fb->MsaaFrameBuffer);
 	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, fb->FrameBuffers[fb->Index]);
