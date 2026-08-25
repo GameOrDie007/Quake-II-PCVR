@@ -100,9 +100,10 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	//Get the cvar
     sv_cheats = Cvar_Get("cheats", "0", CVAR_ARCHIVE);
 
-	/* World-yaw offset the weapon placement below is built with. Re-read at the
-	   end of this function to correct the one-frame snap-turn lag; see there. */
-	float vr_weaponYawOffsetUsed = 0.0f;
+	/* snapTurn as it stands on entry, i.e. the value the weapon placement below
+	   is effectively built against. Compared at the end of this function to
+	   correct the one-frame snap-turn lag; see there. */
+	float snapTurnAtEntry = snapTurn;
 
     static qboolean dominantGripPushed = false;
 	static float dominantGripPushTime = 0.0f;
@@ -190,7 +191,6 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
             weaponoffset[2] = pDominantTracking->HeadPose.Pose.Position.z - hmdPosition[2];
 
 			{
-				vr_weaponYawOffsetUsed = cl.refdef.viewangles[YAW] - hmdorientation[YAW];
 				vec2_t v;
 				rotateAboutOrigin(-weaponoffset[0], weaponoffset[2], (cl.refdef.viewangles[YAW] - hmdorientation[YAW]), v);
 				weaponoffset[0] = v[0];
@@ -547,13 +547,21 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	 * 72Hz it is a single-frame flash. It reads as a glitch rather than as
 	 * latency, so it is corrected here rather than reproduced.
 	 *
-	 * The correction only does anything on the frame snapTurn actually changes:
-	 * with no turn the delta is zero and the weapon placement they tuned is left
-	 * exactly as it was.
+	 * The delta is measured strictly within this call - snapTurn on entry
+	 * against snapTurn once the joystick handling has finished - so it is the
+	 * amount the view is about to rotate that the weapon has not accounted for.
+	 *
+	 * An earlier attempt derived it from (cl.refdef.viewangles[YAW] -
+	 * hmdorientation[YAW]) instead, on the assumption that this equals
+	 * snapTurn. It does not, so a bogus rotation was applied on every frame
+	 * rather than only on turns, and the gun ended up pointing at the player.
+	 * Measuring the in-frame change assumes nothing about what viewangles
+	 * holds, and is provably inert when no turn happens: if the sticks are
+	 * untouched the delta is exactly zero and their tuned placement is
+	 * arithmetically unchanged.
 	 */
 	{
-		float yawOffsetNow = snapTurn;
-		float delta = yawOffsetNow - vr_weaponYawOffsetUsed;
+		float delta = snapTurn - snapTurnAtEntry;
 
 		while (delta > 180.0f) delta -= 360.0f;
 		while (delta < -180.0f) delta += 360.0f;
