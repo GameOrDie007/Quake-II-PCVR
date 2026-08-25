@@ -1203,6 +1203,29 @@ q2xr_InitInstance(void)
 			gApp.ViewConfig[0].recommendedImageRectWidth,
 			gApp.ViewConfig[0].recommendedImageRectHeight);
 
+	/*
+	 * Their Android launcher passes these on the command line it builds for the
+	 * engine:
+	 *
+	 *   +set r_mode -1 +set r_customwidth W +set r_customheight H
+	 *   +set gl1_stereo 8
+	 *
+	 * There is no such launcher here, so they are set directly. This has to
+	 * happen before the renderer starts, which is why phase one runs ahead of
+	 * CL_Init.
+	 *
+	 * gl1_stereo is the one that matters. 8 is STEREO_OPENXR, and without it
+	 * gl_state.stereo_mode stays STEREO_MODE_NONE: the renderer then ignores the
+	 * per-eye camera separation cl_screen.c computes from vr_worldscale, so both
+	 * eyes are drawn from the same point while the compositor is still told they
+	 * came from two different eye positions. The result is an image that will
+	 * not fuse.
+	 */
+	Cvar_SetValue("gl1_stereo", 8);
+	Cvar_SetValue("r_mode", -1);
+	Cvar_SetValue("r_customwidth", (float)gApp.Width);
+	Cvar_SetValue("r_customheight", (float)gApp.Height);
+
 	return true;
 }
 
