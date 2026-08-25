@@ -437,6 +437,19 @@ VID_MenuInit(void)
 	s_brightness_slider.generic.callback = BrightnessCallback;
 	s_brightness_slider.minvalue = 1;
 	s_brightness_slider.maxvalue = 20;
+	/*
+	 * Read back whatever BrightnessCallback writes, or the slider snaps to a
+	 * stale position every time the menu is built and the setting looks like
+	 * it reset itself. In VR that is gl1_overbrightbits, mirroring their
+	 * Android branch below.
+	 */
+	if (TBXR_IsRunning())
+	{
+		float overbright = Cvar_VariableValue("gl1_overbrightbits");
+
+		s_brightness_slider.curvalue = ((overbright - 1) * 7.f);
+	}
+	else
 #ifdef __ANDROID__
     if( yquake2Renderer == 1 ) // Don't have any gamma control
     {
@@ -448,7 +461,9 @@ VID_MenuInit(void)
         s_brightness_slider.curvalue = vid_gamma->value * 10;
     }
 #else
-	s_brightness_slider.curvalue = vid_gamma->value * 10;
+	{
+		s_brightness_slider.curvalue = vid_gamma->value * 10;
+	}
 #endif
 
 	s_uiscale_list.generic.type = MTYPE_SPINCONTROL;
@@ -541,7 +556,17 @@ VID_MenuInit(void)
 	Menu_AddItem(&s_opengl_menu, (void *)&s_brightness_slider);
 	Menu_AddItem(&s_opengl_menu, (void *)&s_uiscale_list);
 	Menu_AddItem(&s_opengl_menu, (void *)&s_fs_box);
-	Menu_AddItem(&s_opengl_menu, (void *)&s_vsync_list);
+	/*
+	 * Withheld in VR for the same reason as multisampling: applying it sets
+	 * r_vsync and requests a vid_restart, which tears down the GL context the
+	 * OpenXR session is bound to. It would also undo the forced r_vsync 0 that
+	 * VR needs - the compositor paces the application, and letting the desktop
+	 * window block on the monitor halves the headset frame rate.
+	 */
+	if (!TBXR_IsRunning())
+	{
+		Menu_AddItem(&s_opengl_menu, (void *)&s_vsync_list);
+	}
 	Menu_AddItem(&s_opengl_menu, (void *)&s_af_list);
 	/*
 	 * Not offered in VR. Changing it triggers a vid_restart, which destroys the
