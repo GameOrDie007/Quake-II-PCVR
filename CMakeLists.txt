@@ -665,6 +665,38 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	# is "openal32.dll". MSYS2 ships the same library as libopenal-1.dll, so it
 	# is copied under the name the engine asks for. Without this the load fails
 	# and the game runs silent.
+	# Team Beef's game data. Their standalone ships assets that are part of what
+	# the build *is*, not extras: pak99.pak (HD weapon models, no arm on the
+	# viewmodels), pak6.pak (147MB of HD world textures - inert unless
+	# gl_retexturing is 1), autoexec.cfg (per-weapon offsets tuned for those HD
+	# models), the music tracks, the comfort vignette and the item-wheel icons.
+	#
+	# Copied on build so a wiped build directory does not silently lose them and
+	# leave the game looking like plain retail Quake II. Skipped without comment
+	# if the path does not exist, since it is one machine's layout.
+	set(Q2VR_GAMEDATA "E:/Games/Quest Ports/Quake2Quest" CACHE PATH
+		"Team Beef standalone data directory to copy VR assets from")
+
+	if(EXISTS "${Q2VR_GAMEDATA}")
+		foreach(_asset pak6.pak pak99.pak autoexec.cfg vignette.tga)
+			if(EXISTS "${Q2VR_GAMEDATA}/${_asset}")
+				add_custom_command(TARGET yquake2 POST_BUILD
+					COMMAND ${CMAKE_COMMAND} -E copy_if_different
+						"${Q2VR_GAMEDATA}/${_asset}"
+						"${CMAKE_BINARY_DIR}/release/baseq2/${_asset}")
+			endif()
+		endforeach()
+
+		foreach(_dir music wheel)
+			if(EXISTS "${Q2VR_GAMEDATA}/${_dir}")
+				add_custom_command(TARGET yquake2 POST_BUILD
+					COMMAND ${CMAKE_COMMAND} -E copy_directory
+						"${Q2VR_GAMEDATA}/${_dir}"
+						"${CMAKE_BINARY_DIR}/release/baseq2/${_dir}")
+			endif()
+		endforeach()
+	endif()
+
 	if(EXISTS "${_mingw_bindir}/libopenal-1.dll")
 		add_custom_command(TARGET yquake2 POST_BUILD
 			COMMAND ${CMAKE_COMMAND} -E copy_if_different
