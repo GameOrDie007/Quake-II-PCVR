@@ -1226,6 +1226,22 @@ q2xr_InitInstance(void)
 	Cvar_SetValue("r_customwidth", (float)gApp.Width);
 	Cvar_SetValue("r_customheight", (float)gApp.Height);
 
+	/*
+	 * Desktop vsync must be off in VR. The OpenXR compositor paces the
+	 * application through xrWaitFrame; the window on the desktop is only a
+	 * mirror. With vsync on, RI_EndFrame's SDL_GL_SwapWindow blocks on the
+	 * monitor's refresh, and because the renderer runs once per eye that halves
+	 * the rate again - a 60Hz desktop pinned the headset to 30fps.
+	 *
+	 * It also matters to the engine's own limiter: Qcommon_BeginFrame derives
+	 * its target render rate from GLimp_GetRefreshRate whenever vsync is active,
+	 * which is the desktop's rate, not the headset's.
+	 *
+	 * Team Beef sidestep all of this by making RI_EndFrame a no-op, because
+	 * Android has no desktop window to present to.
+	 */
+	Cvar_SetValue("r_vsync", 0);
+
 	return true;
 }
 
@@ -1650,6 +1666,18 @@ TBXR_FrameSetup(void)
 	endInfo.layers = gApp.FrameState.shouldRender ? layers : NULL;
 	Q2XR_CHECK_XR(xrEndFrame(gApp.Session, &endInfo));
 	q2xrFrameLogCount++;
+	{
+		static int fpsFrames = 0;
+		static int fpsLast = 0;
+		fpsFrames++;
+		if (global_time - fpsLast > 5000)
+		{
+			/* developer 1 to see this; the compositor rate is the number that matters */
+			Com_DPrintf("VR: %.1f fps\n", (fpsFrames * 1000.0f) / (global_time - fpsLast));
+			fpsFrames = 0;
+			fpsLast = global_time;
+		}
+	}
 }
 
 /* bool, not qboolean - VrCommon.h declares it with the C99 type. */
