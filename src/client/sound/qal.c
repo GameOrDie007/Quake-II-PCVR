@@ -340,7 +340,9 @@ QAL_Init()
 	al_device = Cvar_Get("al_device", "", CVAR_ARCHIVE);
 
 	/* DEFAULT_OPENAL_DRIVER is defined at compile time via the compiler */
-	al_driver = Cvar_Get("al_driver", "libopenal.so", CVAR_ARCHIVE);
+	/* Team Beef hardcoded the Android library name here. DEFAULT_OPENAL_DRIVER
+	   is set per platform by CMake, which is openal32.dll on Windows. */
+	al_driver = Cvar_Get("al_driver", DEFAULT_OPENAL_DRIVER, CVAR_ARCHIVE);
 
 	Com_Printf("LoadLibrary(%s)\n", al_driver->string);
 

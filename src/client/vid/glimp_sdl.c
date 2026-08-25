@@ -29,6 +29,7 @@
 
 #include "../../common/header/common.h"
 #include "header/ref.h"
+#include "../../vr/vr_surface.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_video.h>
@@ -440,6 +441,30 @@ GLimp_GetDesktopMode(int *pwidth, int *pheight)
 {
 	// Declare display mode structure to be filled in.
 	SDL_DisplayMode mode;
+
+	/*
+	 * In VR this is the eye buffer size, not the monitor. Team Beef's change
+	 * to VID_GetModeInfo makes every video mode resolve to the desktop mode,
+	 * and on Android their glimp_android.c answered it from Quest_GetScreenRes
+	 * so the engine rendered straight at the headset's per-eye resolution.
+	 * Same thing here, from the OpenXR view configuration.
+	 *
+	 * Zero means OpenXR has not come up - no runtime, no headset, or this is a
+	 * flatscreen run - so fall through to the real desktop mode.
+	 */
+	{
+		int vrWidth = 0;
+		int vrHeight = 0;
+
+		TBXR_GetEyeResolution(&vrWidth, &vrHeight);
+
+		if (vrWidth > 0 && vrHeight > 0)
+		{
+			*pwidth = vrWidth;
+			*pheight = vrHeight;
+			return true;
+		}
+	}
 
 	if (window)
 	{

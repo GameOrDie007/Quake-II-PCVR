@@ -30,6 +30,9 @@
 #include <SDL2/SDL_main.h>
 
 #include "../../common/header/common.h"
+#ifndef DEDICATED_ONLY
+#include "../../vr/vr_surface.h"
+#endif
 
 /*
  * Windows main function. Containts the
@@ -94,9 +97,29 @@ main(int argc, char **argv)
 	Sys_RedirectStdout();
 #endif
 
-	// Call the initialization code.
-	// Never returns.
+	/*
+	 * No longer "never returns" - Team Beef commented out the Qcommon_Mainloop
+	 * call at the end of Qcommon_Init so that the platform layer can drive the
+	 * engine a frame at a time, once per eye.
+	 */
 	Qcommon_Init(argc, argv);
+
+#ifndef DEDICATED_ONLY
+	/* Phase two: the window and GL context exist now, so the session,
+	   swapchains and actions can be created. */
+	if (TBXR_InitialiseSession())
+	{
+		while (1)
+		{
+			TBXR_FrameSetup();
+		}
+	}
+
+	Com_Printf("Running without VR.\n");
+#endif
+
+	/* Flatscreen, and the dedicated server. */
+	Qcommon_Mainloop();
 
 	return 0;
 }
