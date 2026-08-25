@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
+# Raised from 3.0: CMake 4.x refuses any minimum below 3.5 outright, and this
+# port builds with the CMake bundled in VS Build Tools 2026 (4.3.1). A declared
+# minimum affects policy defaults only, not the build itself.
+cmake_minimum_required(VERSION 3.5 FATAL_ERROR)
 
 # Enforce "Debug" as standard build type.
 if(NOT CMAKE_BUILD_TYPE)
@@ -25,11 +28,45 @@ endif()
 # Add extended path for FreeBSD and Homebrew on OS X.
 list(APPEND CMAKE_PREFIX_PATH /usr/local)
 
+# MSVC support, backported from yquake2 8.x.
+#
+# 7.41 predates upstream's MSVC support, and this port needs MSVC because the
+# OpenXR loader and the rest of the PCVR build use it. Confined entirely to
+# this file - no engine source is touched - because the build system is the one
+# part of a port that is always replaced anyway. Team Beef build with the
+# Android NDK, so neither of yquake2's own build files is what they used.
+if (MSVC)
+	add_compile_options(/MP) # parallel build
+
+	# Same warnings upstream silences for MSVC.
+	add_compile_options(/wd4244 /wd4305) # possible loss of data / truncation
+	add_compile_options(/wd4018) # signed/unsigned mismatch
+	add_compile_options(/wd4996) # 'function' declared deprecated (secure CRT)
+	add_compile_options(/experimental:external /external:W0) # quiet system headers
+else()
+
 # Enforce compiler flags:
 #  -Wall                -> More warnings
 #  -fno-strict-aliasing -> Quake 2 is far away from strict aliasing
 #  -fwrapv              -> Make signed integer overflows defined
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -Wall -fno-strict-aliasing -fwrapv")
+
+# -fcommon: GCC 10 flipped its default to -fno-common, which turns a tentative
+# definition such as "cvar_t *m_yaw;" appearing in two translation units into
+# two real definitions instead of merging them. 7.41 predates that change and
+# relies on the old behaviour - m_yaw, m_side, sensitivity, vid_fullscreen and
+# others are declared this way - so a modern GCC fails the link with "multiple
+# definition of".
+#
+# Restoring the old default is one flag and leaves every source file untouched,
+# which is what a 1:1 port wants. Upstream later fixed the declarations
+# properly, but adopting that here would mean importing engine changes from a
+# version this port is deliberately not based on.
+include(CheckCCompilerFlag)
+check_c_compiler_flag("-fcommon" HAVE_FCOMMON)
+if(HAVE_FCOMMON)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fcommon")
+endif()
 
 # Switch of some annoying warnings
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
@@ -42,6 +79,8 @@ endif()
 
 # Use -O2 as maximum optimization level. -O3 has it's problems with yquake2.
 string(REPLACE "-O3" "-O2" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+
+endif() # MSVC
 
 # Compilation time options.
 option(CURL_SUPPORT "cURL support" ON)
@@ -73,9 +112,20 @@ add_definitions(-DYQ2OSTYPE="${YQ2OSTYPE}")
 
 # Architecture string.
 set(YQ2ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Override CPU architecture")
-string(REGEX REPLACE "amd64" "x86_64" ARCH ${YQ2ARCH})
+
+# Lowercase first: on Windows CMAKE_SYSTEM_PROCESSOR is "AMD64", and the
+# substitutions below are lowercase-only, so without this ARCH stays "AMD64"
+# and none of the per-architecture branches match.
+string(TOLOWER "${YQ2ARCH}" ARCH)
+
+string(REGEX REPLACE "amd64" "x86_64" ARCH ${ARCH})
 string(REGEX REPLACE "i.86" "i386" ARCH ${ARCH})
 string(REGEX REPLACE "^arm.*" "arm" ARCH ${ARCH})
+
+# 7.41's common.h has "#error YQ2ARCH should be defined by the build system",
+# so it must come from here. 8.x added an in-code fallback for MSVC instead;
+# keeping 7.41's approach means no engine source changes for the sake of the
+# build.
 add_definitions(-DYQ2ARCH="${ARCH}")
 
 # Systemwide installation of game assets.
@@ -137,7 +187,11 @@ if(${OPENAL_SUPPORT})
 endif()
 
 # General linker flags.
-if(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+# MSVC has no libm to link and no libgcc to static-link; both are GCC-isms and
+# passing them through would fail the link.
+if(MSVC)
+	# nothing to add
+elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
 	list(APPEND yquake2LinkerFlags "-lm -static-libgcc")
 else()
 	list(APPEND yquake2LinkerFlags "-lm -rdynamic")
@@ -161,7 +215,8 @@ endif()
 
 # Force SSE math on x86_64. All sane compilers should do this
 # anyway, just to protect us from broken Linux distros.
-if ("${ARCH}" STREQUAL "x86_64")
+# -mfpmath is a GCC flag; MSVC uses SSE2 on x64 unconditionally.
+if ("${ARCH}" STREQUAL "x86_64" AND NOT MSVC)
 	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mfpmath=sse")
 endif()
 
