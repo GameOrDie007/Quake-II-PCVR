@@ -1120,6 +1120,8 @@ static menuslider_s s_pcoptions_supersampling_slider;
 static menulist_s s_pcoptions_msaa_box;
 static menulist_s s_pcoptions_farsee_box;
 static menulist_s s_pcoptions_action;
+static menuseparator_s s_pcoptions_note1;
+static menuseparator_s s_pcoptions_note2;
 
 static void
 CrosshairFunc(void *unused)
@@ -1798,26 +1800,19 @@ PCOptions_MenuInit(void)
     s_pcoptions_farsee_box.itemnames = pc_yesno_names;
     s_pcoptions_farsee_box.curvalue = (farsee->value != 0);
 
-    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_supersampling_slider);
-    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_msaa_box);
-    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_farsee_box);
-}
-
-static void
-PCOptions_MenuDraw(void)
-{
-    float scale = SCR_GetMenuScale();
-
-    Menu_AdjustCursor(&s_pcoptions_menu, 1);
-    Menu_Draw(&s_pcoptions_menu);
-
     /*
-     * Show what the eye buffer is actually running at. Render resolution is a
-     * multiplier of whatever the runtime asks for, so the same number means
-     * different things on different headsets and streaming settings, and the
-     * cost of raising it is not otherwise visible until the frame rate drops.
+     * Notes as separators rather than M_Print in the draw function. An earlier
+     * attempt printed them directly and they never appeared on screen, while
+     * the items either side of them drew fine - so these ride exactly the same
+     * path as the controls that are known to render.
      */
+    s_pcoptions_note1.generic.type = MTYPE_SEPARATOR;
+    s_pcoptions_note1.generic.x = 0;
+    s_pcoptions_note1.generic.y = (y += 20);
+    s_pcoptions_note1.generic.name = "restart to apply";
+
     {
+        static char eyeNote[64];
         int eyeWidth = 0;
         int eyeHeight = 0;
 
@@ -1825,13 +1820,36 @@ PCOptions_MenuDraw(void)
 
         if (eyeWidth > 0 && eyeHeight > 0)
         {
-            char buf[64];
-
-            Com_sprintf(buf, sizeof(buf), "now %dx%d per eye", eyeWidth, eyeHeight);
-            M_Print(s_pcoptions_menu.x - 88 * scale,
-                    (s_pcoptions_menu.y + 45) * scale, buf);
+            /* Render resolution is a multiplier of whatever the runtime asks
+               for, so the same number means different things on different
+               headsets and streaming settings. Showing the pixel count makes
+               the cost of raising it visible before the frame rate drops. */
+            Com_sprintf(eyeNote, sizeof(eyeNote), "now %dx%d per eye",
+                    eyeWidth, eyeHeight);
         }
+        else
+        {
+            Com_sprintf(eyeNote, sizeof(eyeNote), "flatscreen - no headset");
+        }
+
+        s_pcoptions_note2.generic.type = MTYPE_SEPARATOR;
+        s_pcoptions_note2.generic.x = 0;
+        s_pcoptions_note2.generic.y = (y += 10);
+        s_pcoptions_note2.generic.name = eyeNote;
     }
+
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_supersampling_slider);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_msaa_box);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_farsee_box);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note1);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note2);
+}
+
+static void
+PCOptions_MenuDraw(void)
+{
+    Menu_AdjustCursor(&s_pcoptions_menu, 1);
+    Menu_Draw(&s_pcoptions_menu);
 
     M_Popup();
 }
