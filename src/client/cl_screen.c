@@ -83,6 +83,8 @@ extern cvar_t *crosshair_scale;
 
 void SCR_TimeRefresh_f(void);
 void SCR_Loading_f(void);
+static void SCR_ItemTable_f(void);
+static void SCR_CheckWheel(const char *what, qboolean items);
 
 const wheel_icon_t weaponIcons[11] = {
         {
@@ -620,6 +622,7 @@ SCR_Init(void)
 	/* register our commands */
 	Cmd_AddCommand("timerefresh", SCR_TimeRefresh_f);
 	Cmd_AddCommand("loading", SCR_Loading_f);
+	Cmd_AddCommand("vrwheel", SCR_ItemTable_f);
 	Cmd_AddCommand("sizeup", SCR_SizeUp_f);
 	Cmd_AddCommand("sizedown", SCR_SizeDown_f);
 	Cmd_AddCommand("sky", SCR_Sky_f);
@@ -817,18 +820,209 @@ DrawNumberCenteredImageScaled(int x, int y, char* num, float scale)
     }
 }
 
+/*
+ * Print the item table the server sent, as index -> name.
+ *
+ * The weapon wheel is a table of inventory indices, and those indices come from
+ * the order of a mission pack's item list, which shares nothing with baseq2's.
+ * Reading two files that never mention each other is how a wheel ends up
+ * selecting the wrong gun; this prints what the running game actually says, so
+ * the tables below can be checked against it without a headset:
+ *
+ *   yquake2 -datadir <q2> +set game rogue +map rmine1 +wait ... +vrwheel +quit
+ */
+static void
+SCR_ItemTable_f(void)
+{
+    int i;
+    int found = 0;
+
+    for (i = 0; i < MAX_ITEMS; i++)
+    {
+        const char *name = cl.configstrings[CS_ITEMS + i];
+
+        if (name && name[0])
+        {
+            Com_Printf("item %3d  %s\n", i, name);
+            found++;
+        }
+    }
+
+    if (!found)
+    {
+		Com_Printf("vrwheel: no item configstrings - load a map first\n");
+		return;
+    }
+
+	SCR_CheckWheel("weapon", false);
+	SCR_CheckWheel("item", true);
+}
+
+/*
+ * The mission packs' wheels.
+ *
+ * The wheel is a table of inventory indices, and those indices are the order of
+ * a game's item list, which the mission packs rewrite: Ground Zero's ETF Rifle
+ * sits at 12, where baseq2 has Grenades. Selecting by baseq2's numbers in
+ * Ground Zero picks the wrong weapon every time.
+ *
+ * These were not read out of g_items.c. They come from the item table the
+ * running game sends the client, printed by the "vrwheel" console command
+ * above - two files that never mention each other cannot be joined by reading
+ * them. Re-check them the same way if a pack is ever rebuilt:
+ *
+ *   yquake2 -datadir <q2> +set game rogue +map rmine1 +wait ... +vrwheel +quit
+ *
+ * Ring positions come from Team Beef's own generator, the snippet commented out
+ * in VrInputDefault.c: radius 160, first icon at the top, going clockwise.
+ * baseq2's table below is left exactly as they wrote it.
+ *
+ * Icons resolve through the search path, so the weapons both games share use
+ * Team Beef's own art in baseq2/wheel and only the new ones need generating -
+ * tools/make-wheel-icons.py builds those from the owner's own paks.
+ */
+
+static const wheel_icon_t xatrixWeaponIcons[14] = {
+	{"w_blaster", 7, "Blaster", NULL, 0, 0, -160},
+	{"w_shotgun", 8, "Shotgun", "shells", 21, 69, -144},
+	{"w_sshotgun", 9, "Super Shotgun", "shells", 21, 125, -99},
+	{"w_machinegun", 10, "Machinegun", "bullets", 22, 155, -35},
+	{"w_chaingun", 11, "Chaingun", "bullets", 22, 155, 35},
+	{"w_grenades", 12, "Grenades", "grenades", 12, 125, 99},
+	{"a_trap", 13, "Trap", "trap", 13, 69, 144},
+	{"w_glauncher", 14, "Grenade Launcher", "grenades", 12, 0, 160},
+	{"w_rlauncher", 15, "Rocket Launcher", "rockets", 24, -69, 144},
+	{"w_hyperblaster", 16, "HyperBlaster", "cells", 23, -125, 99},
+	{"w_ripper", 17, "Ionripper", "cells", 23, -155, 35},
+	{"w_railgun", 18, "Railgun", "slugs", 25, -155, -35},
+	{"w_phallanx", 19, "Phalanx", "mslugs", 26, -125, -99},
+	{"w_bfg", 20, "BFG10K", "cells", 23, -69, -144},
+};
+
+static const wheel_icon_t rogueWeaponIcons[17] = {
+	{"w_blaster", 7, "Blaster", NULL, 0, 0, -160},
+	{"w_shotgun", 8, "Shotgun", "shells", 23, 57, -149},
+	{"w_sshotgun", 9, "Super Shotgun", "shells", 23, 107, -118},
+	{"w_machinegun", 10, "Machinegun", "bullets", 24, 143, -71},
+	{"w_chaingun", 11, "Chaingun", "bullets", 24, 159, -14},
+	{"w_etf_rifle", 12, "ETF Rifle", "flechettes", 28, 153, 43},
+	{"w_grenades", 13, "Grenades", "grenades", 13, 127, 96},
+	{"w_glauncher", 14, "Grenade Launcher", "grenades", 13, 84, 136},
+	{"w_proxlaunch", 15, "Prox Launcher", "prox", 29, 29, 157},
+	{"a_tesla", 30, "Tesla", "tesla", 30, -29, 157},
+	{"w_rlauncher", 16, "Rocket Launcher", "rockets", 26, -84, 136},
+	{"w_hyperblaster", 17, "HyperBlaster", "cells", 25, -127, 96},
+	{"w_heatbeam", 18, "Plasma Beam", "cells", 25, -153, 43},
+	{"w_railgun", 19, "Railgun", "slugs", 27, -159, -14},
+	{"w_bfg", 20, "BFG10K", "cells", 25, -143, -71},
+	{"w_chainfist", 21, "Chainfist", NULL, 0, -107, -118},
+	{"w_disintegrator", 22, "Disruptor", "disruptor", 32, -57, -149},
+};
+
+static const wheel_icon_t xatrixItemIcons[7] = {
+	{"p_silencer", 30, "Silencer", NULL, 0, 0, -160},
+	{"p_rebreather", 31, "Rebreather", NULL, 0, 125, -99},
+	{"p_envirosuit", 32, "Environment Suit", NULL, 0, 155, 35},
+	{"i_powershield", 6, "Power Shield", NULL, 0, 69, 144},
+	{"p_quadfire", 28, "DualFire Damage", NULL, 0, -69, 144},
+	{"p_quad", 27, "Quad Damage", NULL, 0, -155, 35},
+	{"p_invulnerability", 29, "Invulnerability", NULL, 0, -125, -99},
+};
+
+static const wheel_icon_t rogueItemIcons[8] = {
+	{"p_silencer", 35, "Silencer", NULL, 0, 0, -160},
+	{"p_rebreather", 36, "Rebreather", NULL, 0, 113, -113},
+	{"p_envirosuit", 37, "Environment Suit", NULL, 0, 160, 0},
+	{"p_ir", 42, "IR Goggles", NULL, 0, 113, 113},
+	{"i_powershield", 6, "Power Shield", NULL, 0, 0, 160},
+	{"p_double", 43, "Double Damage", NULL, 0, -113, 113},
+	{"p_quad", 33, "Quad Damage", NULL, 0, -160, 0},
+	{"p_invulnerability", 34, "Invulnerability", NULL, 0, -113, -113},
+};
+
+/*
+ * The wheel for whatever game is loaded. baseq2's tables are the fallback, so a
+ * mod nobody has a table for behaves as it did before.
+ */
+const wheel_icon_t *
+CL_WheelIcons(qboolean items, int *count)
+{
+	const char *game = Cvar_VariableString("game");
+
+	if (!strcmp(game, "xatrix"))
+	{
+		*count = items ? 7 : 14;
+		return items ? xatrixItemIcons : xatrixWeaponIcons;
+	}
+
+	if (!strcmp(game, "rogue"))
+	{
+		*count = items ? 8 : 17;
+		return items ? rogueItemIcons : rogueWeaponIcons;
+	}
+
+	*count = items ? 6 : 11;
+	return items ? itemIcons : weaponIcons;
+}
+
+/*
+ * Check a wheel table against the game that is actually running.
+ *
+ * Two things can be wrong and neither is visible by reading: an index can name
+ * a different item than the table claims, and an icon can be missing. Both
+ * would first show up in a headset, as the wrong gun or a blank segment. This
+ * prints the table beside the server's own item names and asks the renderer
+ * whether each icon loads, so a wheel can be proved right at a console.
+ */
+static void
+SCR_CheckWheel(const char *what, qboolean items)
+{
+	const wheel_icon_t *list;
+	int count = 0;
+	int i;
+	int bad = 0;
+
+	list = CL_WheelIcons(items, &count);
+	Com_Printf("\n%s wheel - %d segments\n", what, count);
+
+	for (i = 0; i < count; i++)
+	{
+		const char *server = cl.configstrings[CS_ITEMS + list[i].index];
+		char path[MAX_QPATH];
+		int w = -1, h = -1;
+		int aw = -1, ah = -1;
+
+		Com_sprintf(path, sizeof(path), "/wheel/%s.png", list[i].name);
+		Draw_GetPicSize(&w, &h, path);
+
+		if (list[i].ammo)
+		{
+			Com_sprintf(path, sizeof(path), "/wheel/a_%s.png", list[i].ammo);
+			Draw_GetPicSize(&aw, &ah, path);
+		}
+
+		Com_Printf("  %2d  %-18s idx %3d  server \"%s\"%s  icon %s%s\n",
+				i, list[i].command, list[i].index,
+				server ? server : "",
+				(server && !Q_stricmp(server, list[i].command)) ? "" : "  <-- MISMATCH",
+				(w > 0) ? "ok" : "MISSING",
+				list[i].ammo ? ((aw > 0) ? ", ammo ok" : ", ammo icon MISSING") : "");
+
+		if (w <= 0 || (list[i].ammo && aw <= 0) ||
+			!server || Q_stricmp(server, list[i].command))
+		{
+			bad++;
+		}
+	}
+
+	Com_Printf("%s wheel: %d of %d segments verified\n", what, count - bad, count);
+}
+
 void
 SCR_DrawItemWheel (float separation)
 {
     int totalIcons;
-    wheel_icon_t* iconlist;
-    if(!isItems) {
-        totalIcons = 11;
-        iconlist = weaponIcons;
-    } else {
-        totalIcons = 6;
-        iconlist = itemIcons;
-    }
+    const wheel_icon_t *iconlist = CL_WheelIcons(isItems, &totalIcons);
     if(draw_item_wheel) {
         int offset_stereo = SCR_GetStereoHudOffset(separation);
         int ringw, ringh;

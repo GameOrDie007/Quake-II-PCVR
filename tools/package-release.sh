@@ -23,7 +23,19 @@ fi
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD="$REPO/build-mingw/release"
-RETAIL="/e/Games/Quake 2/baseq2"
+# The folder holding baseq2/, and beside it xatrix/ and rogue/ if the owner has
+# the mission packs. Overridable, because a Steam install is not where this
+# machine keeps its copy.
+Q2DIR="${Q2DIR:-}"
+if [ -z "$Q2DIR" ]; then
+	for d in "/e/Games/Quake 2" 		"/c/Program Files (x86)/Steam/steamapps/common/Quake 2" 		"/c/Program Files/Steam/steamapps/common/Quake 2" 		"/c/GOG Games/Quake 2"; do
+		if [ -f "$d/baseq2/pak0.pak" ]; then
+			Q2DIR="$d"
+			break
+		fi
+	done
+fi
+RETAIL="$Q2DIR/baseq2"
 
 if [ ! -f "$BUILD/yquake2.exe" ]; then
 	echo "no build found at $BUILD - build first" >&2
@@ -76,11 +88,111 @@ done
 
 mkdir -p "$DEST/baseq2/save"
 
+# --- the mission packs -----------------------------------------------------
+#
+# The Reckoning and Ground Zero are separate gamedirs. Each needs three things
+# beyond its pak: the game library built here (the one Steam ships is 32-bit
+# and, more to the point, predates the three function pointers Team Beef added
+# to game_import_t), its own wheel icons, and its own autoexec.cfg and
+# config.cfg - the engine execs each of those once, taking the first match on
+# the search path, so a gamedir that had neither would silently lose Team
+# Beef's settings rather than inherit them.
+for pack in xatrix rogue; do
+	case "$pack" in
+		xatrix) title="The Reckoning" ;;
+		rogue)  title="Ground Zero" ;;
+	esac
+
+	if [ ! -f "$Q2DIR/$pack/pak0.pak" ]; then
+		echo "  $title not installed - skipped"
+		continue
+	fi
+
+	echo "  $title"
+	mkdir -p "$DEST/$pack/save"
+	cp -f "$BUILD/$pack/game.dll" "$DEST/$pack/"
+	cp -f "$Q2DIR/$pack/pak0.pak" "$DEST/$pack/"
+	[ -d "$Q2DIR/$pack/video" ] && cp -rf "$Q2DIR/$pack/video" "$DEST/$pack/"
+
+	# Team Beef's settings, which are not optional - gl1_stereo and
+	# gl_retexturing among them - plus their weapon offsets. Both games keep
+	# baseq2's WEAP_ numbering for the eleven weapons they share, so those
+	# values are still right here; only the new weapons need their own.
+	[ -f "$DEST/baseq2/config.cfg" ] && cp -f "$DEST/baseq2/config.cfg" "$DEST/$pack/"
+	if [ -f "$DEST/baseq2/autoexec.cfg" ]; then
+		cp -f "$DEST/baseq2/autoexec.cfg" "$DEST/$pack/autoexec.cfg"
+	else
+		: > "$DEST/$pack/autoexec.cfg"
+	fi
+
+	cat >> "$DEST/$pack/autoexec.cfg" <<PACKCFG
+
+// ---------------------------------------------------------------------------
+// $title's own weapons.
+//
+// These are not Team Beef's numbers - they never shipped this game. They start
+// at the engine's default and are meant to be tuned by eye in the headset:
+//
+//     set vr_weapon_adjustment_<n> "back,left,up,pitch,yaw,roll"
+//
+// The eleven weapons this game shares with Quake II keep Team Beef's values
+// above, which are still correct because $title uses the same WEAP_ numbering
+// for them. It has no HD viewmodels of its own, though, so these will not sit
+// quite like the ones above until they are tuned.
+PACKCFG
+
+	if [ "$pack" = "xatrix" ]; then
+		cat >> "$DEST/$pack/autoexec.cfg" <<'PACKCFG'
+//WEAP_PHALANX
+set vr_weapon_adjustment_12 "10.0,7.0,-8.0,-3.0,0.0,0.0"
+//WEAP_BOOMER - the Ionripper
+set vr_weapon_adjustment_13 "10.0,7.0,-8.0,-3.0,0.0,0.0"
+PACKCFG
+	else
+		cat >> "$DEST/$pack/autoexec.cfg" <<'PACKCFG'
+//WEAP_DISRUPTOR
+set vr_weapon_adjustment_12 "10.0,7.0,-8.0,-3.0,0.0,0.0"
+//WEAP_ETFRIFLE
+set vr_weapon_adjustment_13 "10.0,7.0,-8.0,-3.0,0.0,0.0"
+//WEAP_PLASMA - the Plasma Beam
+set vr_weapon_adjustment_14 "10.0,7.0,-8.0,-3.0,0.0,0.0"
+//WEAP_PROXLAUNCH
+set vr_weapon_adjustment_15 "10.0,7.0,-8.0,-3.0,0.0,0.0"
+//WEAP_CHAINFIST
+set vr_weapon_adjustment_16 "10.0,7.0,-8.0,-3.0,0.0,0.0"
+PACKCFG
+	fi
+done
+
+# Wheel icons for whichever packs were installed, built from the owner's own
+# paks. Only the weapons the packs add need them; everything shared resolves to
+# Team Beef's art in baseq2/wheel through the search path.
+if command -v python >/dev/null 2>&1; then
+	python "$REPO/tools/make-wheel-icons.py" "$Q2DIR" "$DEST" || \
+		echo "  warning: wheel icons not generated" >&2
+else
+	echo "  warning: no python - wheel icons not generated" >&2
+fi
+
 # --- launcher --------------------------------------------------------------
 # -portable keeps config.cfg, saves and screenshots inside this folder rather
 # than in Documents, which is what makes the folder self-contained.
 printf '@echo off\r\nstart "" "%%~dp0yquake2.exe" -portable\r\n' \
 	> "$DEST/Play Quake II VR.bat"
+
+# One launcher per game. The gamedir has to be chosen at startup: changing it
+# while running ends in vid_restart, which destroys the GL context the OpenXR
+# swapchain images belong to, and nothing brings the session back.
+for pack in xatrix rogue; do
+	case "$pack" in
+		xatrix) title="The Reckoning" ;;
+		rogue)  title="Ground Zero" ;;
+	esac
+	if [ -f "$DEST/$pack/pak0.pak" ]; then
+		printf '@echo off\r\nstart "" "%%~dp0yquake2.exe" -portable +set game %s\r\n' \
+			"$pack" > "$DEST/Play $title VR.bat"
+	fi
+done
 
 # --- readme ----------------------------------------------------------------
 cat > "$DEST/README.txt" <<'README'

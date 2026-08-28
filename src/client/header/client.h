@@ -332,6 +332,7 @@ typedef struct
 
 extern const wheel_icon_t weaponIcons[];
 extern const wheel_icon_t itemIcons[];
+const wheel_icon_t *CL_WheelIcons(qboolean items, int *count);
 
 void DrawString (int x, int y, char *s);
 void DrawStringScaled(int x, int y, char *s, float factor);
