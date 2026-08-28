@@ -1119,6 +1119,8 @@ static menuframework_s s_pcoptions_menu;
 static menuslider_s s_pcoptions_supersampling_slider;
 static menulist_s s_pcoptions_msaa_box;
 static menulist_s s_pcoptions_farsee_box;
+static menuslider_s s_pcoptions_hud_slider;
+static menulist_s s_pcoptions_mirror_box;
 static menulist_s s_pcoptions_action;
 static menuseparator_s s_pcoptions_note1;
 static menuseparator_s s_pcoptions_note2;
@@ -1727,6 +1729,7 @@ M_Menu_Options_f(void)
 static const char *msaa_names[] = {"off", "2x", "4x", "8x", 0};
 /* Theirs is a local inside Options_MenuInit; a copy avoids touching it. */
 static const char *pc_yesno_names[] = {"no", "yes", 0};
+static const char *mirror_names[] = {"off", "window", "full screen", 0};
 
 /* Slider runs 5..20, giving 0.5 to 2.0 in tenths. Their build is 1.1. */
 /*
@@ -1774,6 +1777,23 @@ FarseeFunc(void *unused)
     Cvar_SetValue("r_farsee", (float)s_pcoptions_farsee_box.curvalue);
 }
 
+/*
+ * Both of these take effect immediately - the HUD is laid out afresh every
+ * frame, and the mirror mode only moves the desktop window. Neither needs the
+ * restart the eye buffer settings above do, so neither raises the popup.
+ */
+static void
+HudHeightFunc(void *unused)
+{
+    Cvar_SetValue("vr_hud_height", (float)s_pcoptions_hud_slider.curvalue);
+}
+
+static void
+MirrorFunc(void *unused)
+{
+    Cvar_SetValue("vr_mirror", (float)s_pcoptions_mirror_box.curvalue);
+}
+
 static void
 PCOptions_MenuInit(void)
 {
@@ -1781,6 +1801,8 @@ PCOptions_MenuInit(void)
     cvar_t *ss = Cvar_Get("vr_supersampling", "1.1", CVAR_ARCHIVE);
     cvar_t *msaa = Cvar_Get("vr_msaa", "2", CVAR_ARCHIVE);
     cvar_t *farsee = Cvar_Get("r_farsee", "0", CVAR_ARCHIVE);
+    cvar_t *hud = Cvar_Get("vr_hud_height", "0", CVAR_ARCHIVE);
+    cvar_t *mirror = Cvar_Get("vr_mirror", "2", CVAR_ARCHIVE);
     int y = 0;
 
     s_pcoptions_menu.x = viddef.width / 2;
@@ -1821,6 +1843,24 @@ PCOptions_MenuInit(void)
     s_pcoptions_farsee_box.generic.callback = FarseeFunc;
     s_pcoptions_farsee_box.itemnames = pc_yesno_names;
 
+    s_pcoptions_hud_slider.generic.type = MTYPE_SLIDER;
+    s_pcoptions_hud_slider.generic.x = 0;
+    s_pcoptions_hud_slider.generic.y = (y += 10);
+    s_pcoptions_hud_slider.generic.name = "hud height";
+    s_pcoptions_hud_slider.generic.callback = HudHeightFunc;
+    s_pcoptions_hud_slider.minvalue = 0;
+    s_pcoptions_hud_slider.maxvalue = 30;
+    s_pcoptions_hud_slider.curvalue = hud->value;
+
+    s_pcoptions_mirror_box.generic.type = MTYPE_SPINCONTROL;
+    s_pcoptions_mirror_box.generic.x = 0;
+    s_pcoptions_mirror_box.generic.y = (y += 10);
+    s_pcoptions_mirror_box.generic.name = "desktop window";
+    s_pcoptions_mirror_box.generic.callback = MirrorFunc;
+    s_pcoptions_mirror_box.itemnames = mirror_names;
+    s_pcoptions_mirror_box.curvalue = (mirror->value < 0) ? 0 :
+            ((mirror->value > 2) ? 2 : (int)mirror->value);
+
     /*
      * r_farsee is CVAR_LATCH, so Cvar_SetValue parks the new setting in
      * latched_string and leaves ->value alone until a restart. Reading ->value
@@ -1846,7 +1886,7 @@ PCOptions_MenuInit(void)
     s_pcoptions_note1.generic.type = MTYPE_SEPARATOR;
     s_pcoptions_note1.generic.x = 0;
     s_pcoptions_note1.generic.y = (y += 20);
-    s_pcoptions_note1.generic.name = "restart to apply";
+    s_pcoptions_note1.generic.name = "top two need a restart";
 
     {
         int eyeWidth = 0;
@@ -1879,6 +1919,8 @@ PCOptions_MenuInit(void)
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_ssvalue);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_msaa_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_farsee_box);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_hud_slider);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_mirror_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note1);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note2);
 }
@@ -5086,6 +5128,7 @@ M_Init(void)
     Cmd_AddCommand("menu_multiplayer", M_Menu_Multiplayer_f);
     Cmd_AddCommand("menu_video", M_Menu_Video_f);
     Cmd_AddCommand("menu_options", M_Menu_Options_f);
+    Cmd_AddCommand("menu_pcoptions", M_Menu_PCOptions_f);
     Cmd_AddCommand("menu_keys", M_Menu_Keys_f);
     Cmd_AddCommand("menu_quit", M_Menu_Quit_f);
 

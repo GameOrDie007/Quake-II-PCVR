@@ -32,6 +32,13 @@
 #include "header/input.h"
 #include "../../client/header/keyboard.h"
 #include "../../client/header/client.h"
+#include "../../vr/vr_surface.h"
+
+/* The desktop mirror, owned by glimp_sdl.c. Alt+Enter changes the mode and a
+   window resize moves the mirror, neither of which the engine's own video
+   handling knows about - in VR its idea of the window is the eye buffer. */
+extern cvar_t *vr_mirror;
+void VID_SetMirrorSize(int width, int height);
 
 // ----
 
@@ -432,6 +439,21 @@ IN_Update(void)
 			case SDL_KEYUP:
 			{
 				qboolean down = (event.type == SDL_KEYDOWN);
+				/*
+				 * Alt+Enter switches the mirror between a window and borderless
+				 * full screen. Swallowed here so it never reaches the game -
+				 * Enter is bound to jump.
+				 */
+				if (TBXR_IsRunning() && event.key.keysym.sym == SDLK_RETURN
+						&& (event.key.keysym.mod & KMOD_ALT))
+				{
+					if (down && vr_mirror != NULL)
+					{
+						Cvar_SetValue("vr_mirror", vr_mirror->value == 2 ? 1 : 2);
+					}
+
+					break;
+				}
 
 				/* workaround for AZERTY-keyboards, which don't have 1, 2, ..., 9, 0 in first row:
 				 * always map those physical keys (scancodes) to those keycodes anyway
@@ -472,6 +494,20 @@ IN_Update(void)
 					event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED)
 				{
 					Key_MarkAllUp();
+				}
+				else if (event.window.event == SDL_WINDOWEVENT_RESIZED
+						|| event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
+				{
+					/*
+					 * In VR the window is only a mirror, and viddef is the eye
+					 * buffer - which the engine lays out all of its 2D and its
+					 * refdef against. Letting a window resize touch that would
+					 * resize the headset's view. Only the blit's target changes.
+					 */
+					if (TBXR_IsRunning())
+					{
+						VID_SetMirrorSize(event.window.data1, event.window.data2);
+					}
 				}
 				else if (event.window.event == SDL_WINDOWEVENT_MOVED)
 				{

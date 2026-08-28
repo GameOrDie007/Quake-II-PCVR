@@ -1167,3 +1167,100 @@ readable in the headset.
 - Sibling projects `../ForsakenVR` (PCVR, VDXR+GL, working) and `../NOLFVR` are
   the owner's earlier ports and are the best local reference material —
   `ForsakenVR/VR-NOTES.md` in particular.
+
+---
+
+# The PC branch: a desktop mirror, and two more PC options
+
+Brought across from the Quake port, which had solved the same problems a few
+days earlier. Same engine family, same platform seam, same answers.
+
+## The window on the monitor was black, and always had been
+
+Not "dim", not "stale" - nothing was ever drawn into it. The eyes render into
+their own framebuffers and resolve into the OpenXR swapchain images; the
+default framebuffer was never written at all, and `RI_EndFrame` swapped it
+once per eye regardless. Team Beef never hit this because a Quest has no
+desktop window - on Android `RI_EndFrame` is a no-op.
+
+The fix is three parts, and the first one is where the Quake port lost most of
+a day:
+
+1. **Where the blit goes.** It has to be after `q2xrFramebuffer_Resolve` and
+   before `q2xrFramebuffer_Release`. Blitting out of the multisample buffer
+   instead is not allowed to scale, and scaling an eye into a window is exactly
+   that, so the driver rejects it every frame with `GL_INVALID_OPERATION` and
+   draws nothing. The resolved image is not multisampled, so scaling out of it
+   is legal. After the release the image belongs to the runtime again and must
+   not be read.
+
+2. **One swap per frame, not one per eye.** `RI_EndFrame` runs inside
+   `Qcommon_Frame`, which runs once per eye, so with two swaps a frame the
+   monitor alternated between the buffer the mirror had been drawn into and one
+   two frames old. `RI_EndFrame` now returns early when
+   `gl_state.stereo_mode == STEREO_OPENXR`, and the VR loop presents the window
+   itself, once, after the left eye's release. The swap sits after the release
+   rather than beside the blit so that no window call happens while a swapchain
+   image is still acquired.
+
+3. **Crop, do not stretch.** An eye buffer is nearly square, because that is
+   the shape of the lens's field of view. Squeezing the whole of it onto a 16:9
+   monitor makes everything short and wide. It now takes the largest rectangle
+   of the window's shape from the middle of the eye. The cost is the top and
+   bottom of the eye's view, which is the trade every headset mirror makes and
+   is why they look like an ordinary game.
+
+`vr_mirror` is 0 off, 1 window, 2 borderless full screen, and defaults to 2.
+There is no value of theirs to default to - their build has no desktop window -
+so this is the Quake port's choice, made after seeing it.
+
+**Borderless rather than exclusive full screen.** Exclusive changes the desktop
+mode, which throws every other window onto another monitor. The mirror has no
+business rearranging the desktop. `VID_ApplyMirrorMode` also only calls
+`SDL_SetWindowFullscreen` when the state actually has to change, because SDL
+runs its display-mode handling even when asked for the state it is already in.
+
+**Alt+Enter** toggles window and full screen, and is swallowed in the SDL event
+loop before it reaches the game - Enter is bound to jump.
+
+**The window is resizable**, and a resize moves only `vid_mirrorwidth` and
+`vid_mirrorheight`. It must not touch `viddef`, which in VR is the eye buffer
+and is what the engine lays its 2D and its refdef out against; resizing that
+would resize the headset's view.
+
+## HUD height
+
+Their `yb` anchors the status bar at `viddef.height * 0.72` rather than stock
+Quake II's `viddef.height`, so it is already lifted. A PC headset's eye buffer
+is taller than a Quest's, which pushes it further down the field of view than
+they meant.
+
+`vr_hud_height` (0-30, percent of eye height) lifts it further. **The default
+is 0, at which the expression is identical to theirs**, so an untouched install
+is unchanged - the same rule the rest of the PC branch follows.
+
+## PC Options
+
+Two new items, "hud height" and "desktop window", both applied live: the HUD is
+laid out afresh every frame and the mirror mode only moves the window, so
+neither needs the restart that the eye-buffer settings do. The note at the
+bottom now says "top two need a restart" rather than "restart to apply", which
+was true when there were only two settings above it and is not any more.
+
+`menu_pcoptions` now opens the page from the console, matching the Quake port.
+It was missing, which is also why the first attempt to screenshot the page
+headlessly printed `Unknown command`.
+
+## Verified without a headset
+
+- Builds clean; no new warnings.
+- Flatscreen run unaffected - the whole mirror path is gated on
+  `STEREO_OPENXR` / `TBXR_IsRunning`, and a 25-second run loaded a map and
+  played normally.
+- The PC Options page screenshotted flatscreen with all six items present and
+  reading their cvars correctly:
+  `yquake2.exe -portable -datadir "..." +menu_pcoptions +wait +wait +wait
+  +wait +wait +screenshot +wait +quit`
+
+The mirror itself needs a headset: `STEREO_OPENXR` is never reached without
+one.

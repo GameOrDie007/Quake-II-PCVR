@@ -37,6 +37,24 @@
 cvar_t *vid_displayrefreshrate;
 int glimp_refreshRate = -1;
 
+/*
+ * The desktop mirror's own size.
+ *
+ * In VR viddef is the eye buffer - far larger than the monitor and nearly
+ * square - so the window on the desktop cannot be sized from it, and a resize
+ * of the window must not touch it. These carry the window's size, which is all
+ * the mirror blit needs.
+ */
+int vid_mirrorwidth = 0;
+int vid_mirrorheight = 0;
+
+/*
+ * What the desktop window does while in VR: 0 off, 1 window, 2 borderless full
+ * screen. Applied live in VID_ApplyMirrorMode - only the window changes, so
+ * unlike the eye buffer settings this needs no restart.
+ */
+cvar_t *vr_mirror = NULL;
+
 static int last_flags = 0;
 static int last_display = 0;
 static int last_position_x = SDL_WINDOWPOS_UNDEFINED;
@@ -173,6 +191,7 @@ qboolean
 GLimp_Init(void)
 {
 	vid_displayrefreshrate = Cvar_Get("vid_displayrefreshrate", "-1", CVAR_ARCHIVE);
+	vr_mirror = Cvar_Get("vr_mirror", "2", CVAR_ARCHIVE);
 
 	if (!SDL_WasInit(SDL_INIT_VIDEO))
 	{
@@ -321,6 +340,15 @@ GLimp_InitGraphics(int fullscreen, int *pwidth, int *pheight)
 				Com_Printf("VR: mirror window %dx%d (eye buffer stays %dx%d)\n",
 						width, height, vrWidth, vrHeight);
 			}
+
+			/*
+			 * Resizable, so the mirror can be dragged about and maximised.
+			 * Only the window ever changes size; the eye buffers never do.
+			 */
+			flags |= SDL_WINDOW_RESIZABLE;
+
+			vid_mirrorwidth = width;
+			vid_mirrorheight = height;
 		}
 	}
 
@@ -525,4 +553,97 @@ GLimp_GetDesktopMode(int *pwidth, int *pheight)
 	*pwidth = mode.w;
 	*pheight = mode.h;
 	return true;
+}
+
+/*
+ * Put the desktop window into the shape vr_mirror asks for.
+ *
+ * Called once a frame from the VR loop rather than from the renderer, so no
+ * SDL call ever lands in the middle of an eye's render.
+ */
+void
+VID_ApplyMirrorMode(void)
+{
+	static int applied = -1;
+	int want;
+
+	if (window == NULL || vr_mirror == NULL)
+	{
+		return;
+	}
+
+	want = (int)vr_mirror->value;
+
+	if (want < 0)
+	{
+		want = 0;
+	}
+	else if (want > 2)
+	{
+		want = 2;
+	}
+
+	if (want == applied)
+	{
+		return;
+	}
+
+	{
+		qboolean isfull = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
+		qboolean wantfull = (want == 2);
+
+		/*
+		 * Only touched when it genuinely has to change.
+		 *
+		 * SDL_SetWindowFullscreen runs its display mode handling even when the
+		 * window is already in the state being asked for, and on Windows that
+		 * can restore the desktop mode, which shoves every other window onto
+		 * another monitor.
+		 *
+		 * Borderless (FULLSCREEN_DESKTOP) rather than a real mode change, for
+		 * the same reason: the monitor is only showing a mirror of what is in
+		 * the headset and has no business rearranging the desktop.
+		 */
+		if (isfull != wantfull)
+		{
+			SDL_SetWindowFullscreen(window, wantfull ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+			SDL_GetWindowSize(window, &vid_mirrorwidth, &vid_mirrorheight);
+		}
+	}
+
+	applied = want;
+}
+
+/*
+ * The window's size, for the mirror blit. Not viddef, which is the eye buffer.
+ */
+void
+VID_GetMirrorSize(int *width, int *height)
+{
+	*width = vid_mirrorwidth;
+	*height = vid_mirrorheight;
+}
+
+/*
+ * A resize moves the mirror only.
+ */
+void
+VID_SetMirrorSize(int width, int height)
+{
+	vid_mirrorwidth = width;
+	vid_mirrorheight = height;
+}
+
+/*
+ * Present the window. In VR the renderer's own swap is skipped, because it runs
+ * once per eye and would present a buffer the mirror had not been drawn into
+ * yet; the mirror blit is followed by exactly one swap per frame.
+ */
+void
+VID_PresentMirror(void)
+{
+	if (window != NULL)
+	{
+		SDL_GL_SwapWindow(window);
+	}
 }
