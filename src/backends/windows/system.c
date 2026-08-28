@@ -105,6 +105,174 @@ Sys_Quit(void)
 	exit(0);
 }
 
+/* ------------------------------------------------------------------------- */
+/* Changing game without losing the headset                                    */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Restart the process with a different gamedir selected.
+ *
+ * Changing gamedir while running ends in vid_restart, and VID_Shutdown
+ * destroys the GL context - the OpenXR swapchain images are textures owned by
+ * that context, so the session goes with it and the headset is left showing
+ * nothing. Team Beef never meet this: on Android every game is its own
+ * launcher intent and the process always starts fresh.
+ *
+ * The current command line is reused, so -portable, -datadir and anything else
+ * the launcher passed survive; only the game selection is replaced.
+ */
+void
+Sys_RelaunchGame_f(void)
+{
+	char exe[MAX_OSPATH];
+	char cmdline[8192];
+	char pidarg[64];
+	int i;
+	STARTUPINFOA si;
+	PROCESS_INFORMATION pi;
+
+	if (!GetModuleFileNameA(NULL, exe, sizeof(exe)))
+	{
+		Com_Printf("relaunchgame: cannot find my own executable\n");
+		return;
+	}
+
+	Q_strlcpy(cmdline, "\"", sizeof(cmdline));
+	Q_strlcat(cmdline, exe, sizeof(cmdline));
+	Q_strlcat(cmdline, "\"", sizeof(cmdline));
+
+	/* Everything the launcher passed, minus whatever picked a game. */
+	for (i = 1; i < COM_Argc(); i++)
+	{
+		const char *a = COM_Argv(i);
+
+		if (!a || !a[0])
+		{
+			continue;
+		}
+
+		if (a[0] == '+')
+		{
+			/* A + command belongs to the launch that was given it: re-running
+			   it against a different game would be wrong, and a
+			   +relaunchgame would hand the new instance the same instruction
+			   forever. Skip the command and its arguments, which run to the
+			   next switch. */
+			while (i + 1 < COM_Argc() && COM_Argv(i + 1)[0] != '-' &&
+					COM_Argv(i + 1)[0] != '+')
+			{
+				i++;
+			}
+
+			continue;
+		}
+
+		if (!Q_stricmp(a, "-relaunchwait"))
+		{
+			i++;    /* and the pid that follows it */
+			continue;
+		}
+
+		if (!Q_stricmp(a, "-spmenu"))
+		{
+			continue;
+		}
+
+		Q_strlcat(cmdline, " ", sizeof(cmdline));
+
+		if (strchr(a, ' '))
+		{
+			Q_strlcat(cmdline, "\"", sizeof(cmdline));
+			Q_strlcat(cmdline, a, sizeof(cmdline));
+			Q_strlcat(cmdline, "\"", sizeof(cmdline));
+		}
+		else
+		{
+			Q_strlcat(cmdline, a, sizeof(cmdline));
+		}
+	}
+
+	/* The new selection. "relaunchgame" on its own goes back to baseq2, which
+	   needs no switch at all - and must not inherit one, which is why
+	   +set game is dropped above along with every other + command. */
+	if (Cmd_Argc() > 1)
+	{
+		Q_strlcat(cmdline, " +set game ", sizeof(cmdline));
+		Q_strlcat(cmdline, Cmd_Argv(1), sizeof(cmdline));
+	}
+
+	/* The runtime will not hand the new instance a session while this one
+	   still holds it, so the new instance is told to wait for this process to
+	   exit before it asks. See -relaunchwait in Sys_WaitForRelaunch. */
+	Com_sprintf(pidarg, sizeof(pidarg), " -relaunchwait %u",
+			(unsigned)GetCurrentProcessId());
+	Q_strlcat(cmdline, pidarg, sizeof(cmdline));
+
+	/* Every relaunch comes from the game list, so the new instance opens on
+	   the page the player was heading for rather than at the demo loop. */
+	Q_strlcat(cmdline, " -spmenu", sizeof(cmdline));
+
+	memset(&si, 0, sizeof(si));
+	si.cb = sizeof(si);
+	memset(&pi, 0, sizeof(pi));
+
+	Com_Printf("relaunching: %s\n", cmdline);
+
+	if (!CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+	{
+		Com_Printf("relaunchgame: could not start a new instance (error %u)\n",
+				(unsigned)GetLastError());
+		return;
+	}
+
+	CloseHandle(pi.hThread);
+	CloseHandle(pi.hProcess);
+
+	/* Quit the ordinary way, so the session is torn down before the context,
+	   exactly as it is on any other exit. */
+	Cbuf_AddText("quit\n");
+}
+
+/*
+ * Wait for the instance that spawned this one to exit, so that the OpenXR
+ * runtime is free before the session is created. Five seconds is far longer
+ * than a shutdown takes; if it expires anyway, carrying on is better than
+ * hanging on a black screen.
+ *
+ * Called from main() before anything else, because phase one of the OpenXR
+ * bring-up happens inside Qcommon_Init.
+ */
+void
+Sys_WaitForRelaunch(int argc, char **argv)
+{
+	HANDLE parent;
+	int i;
+
+	for (i = 1; i < argc - 1; i++)
+	{
+		if (Q_stricmp(argv[i], "-relaunchwait") != 0)
+		{
+			continue;
+		}
+
+		parent = OpenProcess(SYNCHRONIZE, FALSE, (DWORD)atoi(argv[i + 1]));
+
+		if (!parent)
+		{
+			return;    /* already gone, which is the common case */
+		}
+
+		WaitForSingleObject(parent, 5000);
+		CloseHandle(parent);
+
+		/* The process is gone, but the runtime may still be letting go of the
+		   session it held. A short cushion here costs nothing and is cheaper
+		   than falling back to flatscreen because the session was refused. */
+		Sleep(400);
+		return;
+	}
+}
+
 void
 Sys_Init(void)
 {
@@ -129,6 +297,8 @@ Sys_Init(void)
 		Sys_Error("Yamagi Quake II needs Windows XP or higher!\n");
 	}
 
+
+	Cmd_AddCommand("relaunchgame", Sys_RelaunchGame_f);
 
 	if (dedicated->value)
 	{

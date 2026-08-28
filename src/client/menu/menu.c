@@ -47,6 +47,8 @@ static char *menu_out_sound = "misc/menu3.wav";
 
 void M_Menu_Main_f(void);
 static void M_Menu_Game_f(void);
+void M_Menu_GameSelect_f(void);
+int GameSelect_Count(void);
 static void M_Menu_LoadGame_f(void);
 static void M_Menu_SaveGame_f(void);
 static void M_Menu_PlayerConfig_f(void);
@@ -708,7 +710,16 @@ M_Main_Key(int key)
         switch (m_main_cursor)
         {
             case 0:
-                M_Menu_Game_f();
+                /* With only Quake II installed there is nothing to choose, so
+                   Single Player opens directly rather than on a list of one. */
+                if (GameSelect_Count() > 1)
+                {
+                    M_Menu_GameSelect_f();
+                }
+                else
+                {
+                    M_Menu_Game_f();
+                }
                 break;
             case 1:
                 M_Menu_Multiplayer_f();
@@ -2750,6 +2761,195 @@ M_Menu_Game_f(void)
     Game_MenuInit();
     M_PushMenu(Game_MenuDraw, Game_MenuKey);
     m_game_cursor = 1;
+}
+
+/*
+ * GAME SELECT MENU
+ *
+ * Not Team Beef's. Their build is base Quake II only, and on Android a game
+ * would be its own launcher intent anyway - on PC that is the .bat files beside
+ * the exe. This puts the same choice in front of Single Player, so the mission
+ * packs are reachable from inside the headset.
+ *
+ * Load and Save need no special handling as a result: saves live in the game's
+ * own directory, and by the time that page is reached the engine is running
+ * that game, so they are simply the right ones.
+ *
+ * Choosing a game that is not the one running relaunches the process. Changing
+ * gamedir in the engine ends in vid_restart, and VID_Shutdown destroys the GL
+ * context the OpenXR swapchain images belong to; nothing brings the session
+ * back afterwards. See Sys_RelaunchGame_f.
+ */
+
+typedef struct
+{
+	const char *dir;    /* gamedir; empty is Quake II itself */
+	const char *name;
+} gameentry_t;
+
+static const gameentry_t gameselect_games[] = {
+	{"", "Quake II"},
+	{"xatrix", "The Reckoning"},
+	{"rogue", "Ground Zero"},
+};
+
+#define GAMESELECT_TOTAL ((int)(sizeof(gameselect_games) / sizeof(gameselect_games[0])))
+
+static menuframework_s s_gameselect_menu;
+static menuaction_s s_gameselect_actions[GAMESELECT_TOTAL];
+static menuseparator_s s_gameselect_note;
+static char s_gameselect_labels[GAMESELECT_TOTAL][32];
+static int s_gameselect_present[GAMESELECT_TOTAL];
+static int s_gameselect_count;
+
+/*
+ * Is this game's data actually installed?
+ *
+ * The pak of a game that is not running is not on the search path, so this asks
+ * the filesystem for the raw directories it was given and looks on disk.
+ */
+static qboolean
+GameSelect_Installed(const char *dir)
+{
+	const char *raw = NULL;
+
+	if (!dir[0])
+	{
+		return true;    /* baseq2 is always there or nothing would be running */
+	}
+
+	while ((raw = FS_GetNextRawPath(raw)) != NULL)
+	{
+		char path[MAX_OSPATH];
+
+		Com_sprintf(path, sizeof(path), "%s/%s/pak0.pak", raw, dir);
+
+		if (Sys_IsFile(path))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static qboolean
+GameSelect_IsCurrent(const char *dir)
+{
+	return !Q_stricmp(Cvar_VariableString("game"), dir);
+}
+
+/*
+ * How many games are installed. The main menu asks, so that with only Quake II
+ * present Single Player opens directly and nobody meets a list of one.
+ */
+int
+GameSelect_Count(void)
+{
+	int i;
+	int n = 0;
+
+	for (i = 0; i < GAMESELECT_TOTAL; i++)
+	{
+		if (GameSelect_Installed(gameselect_games[i].dir))
+		{
+			n++;
+		}
+	}
+
+	return n;
+}
+
+static void
+GameSelectFunc(void *self)
+{
+	menuaction_s *action = (menuaction_s *)self;
+	int slot = action - s_gameselect_actions;
+	const gameentry_t *game;
+
+	if (slot < 0 || slot >= s_gameselect_count)
+	{
+		return;
+	}
+
+	game = &gameselect_games[s_gameselect_present[slot]];
+
+	if (GameSelect_IsCurrent(game->dir))
+	{
+		M_Menu_Game_f();    /* already in it - straight on to New Game */
+		return;
+	}
+
+	Cbuf_AddText(va("relaunchgame %s\n", game->dir));
+}
+
+static void
+GameSelect_MenuInit(void)
+{
+	int i;
+	int y = 0;
+
+	s_gameselect_menu.x = (int)(viddef.width * 0.50f);
+	s_gameselect_menu.nitems = 0;
+	s_gameselect_count = 0;
+
+	for (i = 0; i < GAMESELECT_TOTAL; i++)
+	{
+		const gameentry_t *game = &gameselect_games[i];
+		int slot;
+
+		if (!GameSelect_Installed(game->dir))
+		{
+			continue;
+		}
+
+		slot = s_gameselect_count++;
+		s_gameselect_present[slot] = i;
+
+		/* The one running is marked rather than hidden, so the page reads the
+		   same every time and the cursor lands where it is expected. */
+		Com_sprintf(s_gameselect_labels[slot], sizeof(s_gameselect_labels[slot]),
+				"%s%s", game->name, GameSelect_IsCurrent(game->dir) ? "  *" : "");
+
+		s_gameselect_actions[slot].generic.type = MTYPE_ACTION;
+		s_gameselect_actions[slot].generic.flags = QMF_LEFT_JUSTIFY;
+		s_gameselect_actions[slot].generic.x = 0;
+		s_gameselect_actions[slot].generic.y = y;
+		s_gameselect_actions[slot].generic.name = s_gameselect_labels[slot];
+		s_gameselect_actions[slot].generic.callback = GameSelectFunc;
+
+		Menu_AddItem(&s_gameselect_menu, (void *)&s_gameselect_actions[slot]);
+		y += 10;
+	}
+
+	s_gameselect_note.generic.type = MTYPE_SEPARATOR;
+	s_gameselect_note.generic.x = 0;
+	s_gameselect_note.generic.y = y + 20;
+	s_gameselect_note.generic.name = "* now playing - others restart";
+	Menu_AddItem(&s_gameselect_menu, (void *)&s_gameselect_note);
+
+	Menu_Center(&s_gameselect_menu);
+}
+
+static void
+GameSelect_MenuDraw(void)
+{
+	M_Banner("m_banner_game");
+	Menu_AdjustCursor(&s_gameselect_menu, 1);
+	Menu_Draw(&s_gameselect_menu);
+}
+
+static const char *
+GameSelect_MenuKey(int key)
+{
+	return Default_MenuKey(&s_gameselect_menu, key);
+}
+
+void
+M_Menu_GameSelect_f(void)
+{
+	GameSelect_MenuInit();
+	M_PushMenu(GameSelect_MenuDraw, GameSelect_MenuKey);
 }
 
 /*
@@ -5129,6 +5329,7 @@ M_Init(void)
     Cmd_AddCommand("menu_video", M_Menu_Video_f);
     Cmd_AddCommand("menu_options", M_Menu_Options_f);
     Cmd_AddCommand("menu_pcoptions", M_Menu_PCOptions_f);
+    Cmd_AddCommand("menu_gameselect", M_Menu_GameSelect_f);
     Cmd_AddCommand("menu_keys", M_Menu_Keys_f);
     Cmd_AddCommand("menu_quit", M_Menu_Quit_f);
 

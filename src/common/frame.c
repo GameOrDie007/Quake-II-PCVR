@@ -384,8 +384,20 @@ Qcommon_Init(int argc, char **argv)
 	{
 		if (!dedicated->value)
 		{
-			// Start demo loop...
-			Cbuf_AddText("d1\n");
+			/*
+			 * A relaunch from the game select page passes -spmenu, so the new
+			 * instance opens where the player was going rather than dropping
+			 * into the demo loop and making them walk the menu again.
+			 */
+			if (COM_CheckParm("-spmenu"))
+			{
+				Cbuf_AddText("menu_game\n");
+			}
+			else
+			{
+				// Start demo loop...
+				Cbuf_AddText("d1\n");
+			}
 		}
 		else
 		{
