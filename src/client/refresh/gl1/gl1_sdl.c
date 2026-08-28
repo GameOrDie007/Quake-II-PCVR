@@ -47,6 +47,19 @@ static qboolean vsyncActive = false;
 void
 RI_EndFrame(void)
 {
+	/*
+	 * In VR this runs once per eye, and the window on the desktop is only a
+	 * mirror of the left one. The OpenXR layer blits that mirror after the eye
+	 * resolves and presents it itself, exactly once a frame. Swapping here as
+	 * well would present whichever buffer the mirror had not been drawn into,
+	 * so the monitor alternated between the current image and one two frames
+	 * old.
+	 */
+	if (gl_state.stereo_mode == STEREO_OPENXR)
+	{
+		return;
+	}
+
 	SDL_GL_SwapWindow(window);
 }
 

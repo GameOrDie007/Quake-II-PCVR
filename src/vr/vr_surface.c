@@ -241,6 +241,16 @@ void setWorldPosition(float x, float y, float z);
 void setHMDPosition(float x, float y, float z, float yaw);
 void VR_SetHMDTypeFromRuntimeName(const char *runtimeName);
 
+/*
+ * The desktop mirror. The window belongs to glimp_sdl.c; the image belongs to
+ * this file. The mode is applied from here rather than from the engine's screen
+ * update so that no SDL call ever lands in the middle of an eye's render.
+ */
+extern cvar_t *vr_mirror;
+void VID_ApplyMirrorMode(void);
+void VID_GetMirrorSize(int *width, int *height);
+void VID_PresentMirror(void);
+
 /* ------------------------------------------------------------------------- */
 /* Helpers                                                                     */
 /* ------------------------------------------------------------------------- */
@@ -628,6 +638,75 @@ q2xrFramebuffer_Resolve(q2xrFramebuffer *fb)
 	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 	glDisable(GL_FRAMEBUFFER_SRGB);
+}
+
+/*
+ * Copy the resolved eye into the window on the monitor.
+ *
+ * This has to happen after the resolve and before the release. Blitting out of
+ * the multisample buffer instead is not allowed to scale, and scaling an eye
+ * into a much smaller window is exactly that, so the driver rejects it every
+ * frame and the window stays black - which is what happened on the Quake port
+ * for its whole life. The resolved image is not multisampled, so scaling out of
+ * it is legal. After the release the image belongs to the runtime again and
+ * must not be read at all.
+ *
+ * It crops rather than stretches. An eye buffer is nearly square, because that
+ * is the shape of the lens's field of view, and squeezing the whole of it onto
+ * a 16:9 monitor makes everything look short and wide. Taking the largest
+ * rectangle of the window's shape from the middle of the eye keeps the
+ * proportions honest and fills the window; the cost is the top and bottom of
+ * the eye's view, which is the trade every headset mirror makes.
+ */
+static void
+q2xrFramebuffer_Mirror(q2xrFramebuffer *fb)
+{
+	int mirrorWidth = 0;
+	int mirrorHeight = 0;
+	int cropWidth, cropHeight, cropX, cropY;
+
+	VID_GetMirrorSize(&mirrorWidth, &mirrorHeight);
+
+	if (mirrorWidth <= 0 || mirrorHeight <= 0)
+	{
+		return;
+	}
+
+	cropWidth = fb->Width;
+	cropHeight = (int)((double)fb->Width * mirrorHeight / mirrorWidth);
+
+	if (cropHeight > fb->Height)
+	{
+		cropHeight = fb->Height;
+		cropWidth = (int)((double)fb->Height * mirrorWidth / mirrorHeight);
+	}
+
+	if (cropWidth > fb->Width)
+	{
+		cropWidth = fb->Width;
+	}
+
+	if (cropWidth < 1)
+	{
+		cropWidth = 1;
+	}
+
+	if (cropHeight < 1)
+	{
+		cropHeight = 1;
+	}
+
+	cropX = (fb->Width - cropWidth) / 2;
+	cropY = (fb->Height - cropHeight) / 2;
+
+	glDisable(GL_FRAMEBUFFER_SRGB);
+	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, fb->FrameBuffers[fb->Index]);
+	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+	gl.BlitFramebuffer(cropX, cropY, cropX + cropWidth, cropY + cropHeight,
+			0, 0, mirrorWidth, mirrorHeight,
+			GL_COLOR_BUFFER_BIT, GL_LINEAR);
+	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 }
 
 static void
@@ -1568,6 +1647,8 @@ TBXR_FrameSetup(void)
 
 	Q2XR_CHECK_XR(xrBeginFrame(gApp.Session, &beginInfo));
 
+	VID_ApplyMirrorMode();
+
 	q2xr_UpdateHeadPose();
 	q2xr_ProcessHaptics((float)time);
 
@@ -1675,7 +1756,27 @@ TBXR_FrameSetup(void)
 		q2xrFramebuffer_Resolve(fb);
 		gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
 
+		/* The left eye is the mirror. */
+		if (eye == 0 && vr_mirror != NULL && vr_mirror->value != 0)
+		{
+			q2xrFramebuffer_Mirror(fb);
+		}
+
 		q2xrFramebuffer_Release(fb);
+
+		/*
+		 * One swap per frame, here rather than in the renderer. RI_EndFrame runs
+		 * once per eye and is skipped in VR: left to itself it would present
+		 * whichever buffer the mirror had not been drawn into, so the monitor
+		 * would alternate between this frame's image and one two frames old.
+		 *
+		 * After the release rather than beside the blit, so that no window call
+		 * happens while a swapchain image is still acquired.
+		 */
+		if (eye == 0 && vr_mirror != NULL && vr_mirror->value != 0)
+		{
+			VID_PresentMirror();
+		}
 
 		if (!screenLayer)
 		{

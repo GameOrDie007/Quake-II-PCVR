@@ -56,6 +56,18 @@ cvar_t *r_hudscale; /* named for consistency with R1Q2 */
 cvar_t *r_consolescale;
 cvar_t *r_menuscale;
 
+/*
+ * How far up the eye buffer the status bar sits, as a percentage added to
+ * Team Beef's own 72%.
+ *
+ * Theirs is anchored well above the bottom already - stock Quake II puts yb at
+ * viddef.height, they put it at 0.72 of it - but a PC headset's eye buffer is
+ * taller than a Quest's, which pushes the bar further down the field of view
+ * than they meant it to be. The default is 0, at which the arithmetic below is
+ * identical to theirs, so an untouched install is unchanged.
+ */
+cvar_t *vr_hud_height;
+
 typedef struct
 {
 	int x1, y1, x2, y2;
@@ -603,6 +615,7 @@ SCR_Init(void)
 	r_hudscale = Cvar_Get("r_hudscale", "-1", CVAR_ARCHIVE);
 	r_consolescale = Cvar_Get("r_consolescale", "-1", CVAR_ARCHIVE);
 	r_menuscale = Cvar_Get("r_menuscale", "-1", CVAR_ARCHIVE);
+	vr_hud_height = Cvar_Get("vr_hud_height", "0", CVAR_ARCHIVE);
 
 	/* register our commands */
 	Cmd_AddCommand("timerefresh", SCR_TimeRefresh_f);
@@ -1489,8 +1502,20 @@ SCR_ExecuteLayoutString(char *s,float separation)
 
 		if (!strcmp(token, "yb"))
 		{
+			/*
+			 * 0.72 is theirs. vr_hud_height lifts it further, in percent of the
+			 * eye buffer's height, and is 0 by default - so this is their
+			 * expression exactly until somebody moves the slider.
+			 */
+			float anchor = 0.72f - (vr_hud_height->value / 100.0f);
+
+			if (anchor < 0.2f)
+			{
+				anchor = 0.2f;
+			}
+
 			token = COM_Parse(&s);
-			y = (viddef.height * 0.72) + scale*(int)strtol(token, (char **)NULL, 10);
+			y = (viddef.height * anchor) + scale*(int)strtol(token, (char **)NULL, 10);
 			continue;
 		}
 

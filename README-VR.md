@@ -43,6 +43,17 @@ Two builds are tagged:
 The PC options default to Team Beef's values, so an untouched install of
 either renders identically.
 
+What the PC branch adds on top:
+
+* **A PC Options page** - render resolution, antialiasing, extended view
+  distance, HUD height, and what the desktop window does.
+* **A desktop mirror worth streaming** - borderless full screen by default,
+  Alt+Enter to windowed and back, resizable, and cropped to the shape of the
+  window rather than squashed into it.
+
+Every added option defaults to Team Beef's own value where they have one, so an
+untouched install behaves exactly as their game does.
+
 ## What changed, and why
 
 Almost every difference is a platform seam rather than a design change. The
