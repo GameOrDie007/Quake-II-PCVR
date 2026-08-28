@@ -102,6 +102,8 @@ set(SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/src)
 set(BACKENDS_SRC_DIR ${SOURCE_DIR}/backends)
 set(COMMON_SRC_DIR ${SOURCE_DIR}/common)
 set(GAME_SRC_DIR ${SOURCE_DIR}/game)
+set(XATRIX_SRC_DIR ${SOURCE_DIR}/xatrix)
+set(ROGUE_SRC_DIR ${SOURCE_DIR}/rogue)
 set(SERVER_SRC_DIR ${SOURCE_DIR}/server)
 set(CLIENT_SRC_DIR ${SOURCE_DIR}/client)
 set(VR_SRC_DIR ${SOURCE_DIR}/vr)
@@ -735,6 +737,23 @@ else()
 	target_link_libraries(q2ded ${yquake2LinkerFlags} ${yquake2ServerLinkerFlags} ${yquake2ZLibLinkerFlags})
 endif()
 
+# The mission packs, each as its own game library.
+#
+# The Reckoning and Ground Zero are separate gamedirs with their own game code,
+# which the engine loads when -game xatrix or -game rogue selects them. Neither
+# can use the DLLs the retail discs and Steam ship: Team Beef added three
+# function pointers to game_import_t, so a library built against the stock
+# header reads every field after them at the wrong offset. These are yquake2's
+# own ports of the mission pack code with Team Beef's changeset applied, and
+# their headers are checked against the engine's - see src/xatrix/header/shared.h.
+#
+# Globbed rather than listed because the trees are vendored and static, and two
+# more 114-file lists would bury the rest of this file.
+file(GLOB_RECURSE Xatrix-Source ${XATRIX_SRC_DIR}/*.c)
+file(GLOB_RECURSE Xatrix-Header ${XATRIX_SRC_DIR}/*.h)
+file(GLOB_RECURSE Rogue-Source ${ROGUE_SRC_DIR}/*.c)
+file(GLOB_RECURSE Rogue-Header ${ROGUE_SRC_DIR}/*.h)
+
 # Build the game dynamic library
 add_library(game MODULE ${Game-Source} ${Game-Header})
 set_target_properties(game PROPERTIES
@@ -744,6 +763,32 @@ set_target_properties(game PROPERTIES
 		SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX}
 		)
 target_link_libraries(game ${yquake2LinkerFlags})
+
+add_library(xatrix MODULE ${Xatrix-Source} ${Xatrix-Header})
+set_target_properties(xatrix PROPERTIES
+		PREFIX ""
+		OUTPUT_NAME "game"
+		LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release/xatrix
+		RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release/xatrix
+		SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX}
+		)
+target_link_libraries(xatrix ${yquake2LinkerFlags})
+
+# The mission packs are of the era that spelled these OSTYPE and ARCH; 7.41
+# renamed them YQ2OSTYPE and YQ2ARCH. Set per target rather than globally, so
+# two very generic names do not leak into the engine's translation units.
+target_compile_definitions(xatrix PRIVATE OSTYPE="${YQ2OSTYPE}" ARCH="${ARCH}")
+
+add_library(rogue MODULE ${Rogue-Source} ${Rogue-Header})
+set_target_properties(rogue PROPERTIES
+		PREFIX ""
+		OUTPUT_NAME "game"
+		LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release/rogue
+		RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/release/rogue
+		SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX}
+		)
+target_link_libraries(rogue ${yquake2LinkerFlags})
+target_compile_definitions(rogue PRIVATE OSTYPE="${YQ2OSTYPE}" ARCH="${ARCH}")
 
 # Build the GL1 dynamic library
 add_library(ref_gl1 MODULE ${GL1-Source} ${GL1-Header} ${REF-Platform-Specific-Source})

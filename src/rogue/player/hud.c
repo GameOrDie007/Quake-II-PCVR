@@ -277,7 +277,7 @@ DeathmatchScoreboardMessage(edict_t *ent, edict_t *killer /* can be NULL */)
 
 		if (tag)
 		{
-			Com_sprintf(entry, sizeof(entry), "xv %i yv %i picn %s ", x + 32, y, tag);
+			Com_sprintf(entry, sizeof(entry), "xh %i yv %i picn %s ", x + 32, y, tag);
 			j = strlen(entry);
 
 			if (stringlength + j > 1024)
@@ -341,13 +341,13 @@ HelpComputerMessage(edict_t *ent)
 
 	/* send the layout */
 	Com_sprintf(string, sizeof(string),
-			"xv 32 yv 8 picn help "			/* background */
-			"xv 202 yv 12 string2 \"%s\" "  /* skill */
-			"xv 0 yv 24 cstring2 \"%s\" "   /* level name */
-			"xv 0 yv 54 cstring2 \"%s\" "   /* help 1 */
-			"xv 0 yv 110 cstring2 \"%s\" "  /* help 2 */
-			"xv 50 yv 164 string2 \" kills     goals    secrets\" "
-			"xv 50 yv 172 string2 \"%3i/%3i     %i/%i       %i/%i\" ",
+			"xh 32 yv 8 picn help "			/* background */
+			"xh 202 yv 12 string2 \"%s\" "  /* skill */
+			"xh 0 yv 24 cstring2 \"%s\" "   /* level name */
+			"xh 0 yv 54 cstring2 \"%s\" "   /* help 1 */
+			"xh 0 yv 110 cstring2 \"%s\" "  /* help 2 */
+			"xh 50 yv 164 string2 \" kills     goals    secrets\" "
+			"xh 50 yv 172 string2 \"%3i/%3i     %i/%i       %i/%i\" ",
 			sk, level.level_name,
 			game.helpmessage1,
 			game.helpmessage2,

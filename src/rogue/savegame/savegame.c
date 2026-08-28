@@ -202,11 +202,19 @@ InitGame(void)
 	strong_mines = gi.cvar ("strong_mines", "0", 0);
 	randomrespawn = gi.cvar ("randomrespawn", "0", 0);
 
+	/* VR Stuff */
+	vr_worldscale = gi.cvar( "vr_worldscale", "26.2467", CVAR_ARCHIVE);
+	vr_height_adjust = gi.cvar( "vr_height_adjust", "0.0", CVAR_ARCHIVE);
+	vr_lasersight = gi.cvar("vr_lasersight", "2", CVAR_LATCH);
+	vr_weapon_stabilised = gi.cvar( "vr_weapon_stabilised", "0.0", CVAR_LATCH);
+	vr_jump_sound = gi.cvar( "vr_jump_sound", "1", CVAR_ARCHIVE);
+
 	/* noset vars */
 	dedicated = gi.cvar ("dedicated", "0", CVAR_NOSET);
 
 	/* latched vars */
-	sv_cheats = gi.cvar ("cheats", "0", CVAR_SERVERINFO|CVAR_LATCH);
+	r_lefthand = gi.cvar( "hand", "0", CVAR_USERINFO | CVAR_ARCHIVE );
+	sv_cheats = gi.cvar ("cheats", "0", CVAR_ARCHIVE);
 	gi.cvar ("gamename", GAMEVERSION , CVAR_SERVERINFO | CVAR_LATCH);
 	gi.cvar ("gamedate", __DATE__ , CVAR_SERVERINFO | CVAR_LATCH);
 	maxclients = gi.cvar ("maxclients", "4", CVAR_SERVERINFO | CVAR_LATCH);
