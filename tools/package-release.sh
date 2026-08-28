@@ -225,6 +225,33 @@ Notes:
 - Multisampling and vsync are hidden from the video menu while in VR. Both
   need a video restart, which would drop the headset session, and neither
   affects what the headset sees.
+
+The mission packs
+-----------------
+
+"Play The Reckoning VR.bat" and "Play Ground Zero VR.bat" are there if you own
+the expansions - the packaging step picked them up from the same Quake II
+install as the main game.
+
+Team Beef's standalone is base Quake II only, so the VR side of these is their
+work applied to code they never shipped. Two things to expect:
+
+- The nine weapons the expansions add sit where the engine's default offset puts
+  them, not where a tuned value would. Everything they share with Quake II keeps
+  Team Beef's own numbers. To adjust one, at the console:
+
+      set vr_weapon_adjustment_13 "10.0,7.0,-8.0,-3.0,0.0,0.0"
+
+  which is back, left, up, pitch, yaw, roll. Each expansion's autoexec.cfg lists
+  its own weapons by number.
+
+- Ground Zero's Plasma Beam is drawn from the head rather than the gun. What it
+  hits is correct; where the beam appears to start is not, yet.
+
+Each game is a separate launcher because the gamedir is fixed at startup.
+
+The 2023 remaster's extra episodes - Call of the Machine, Quake II 64 - are not
+here and cannot be: they need the remaster's own engine.
 README
 
 echo
