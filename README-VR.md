@@ -45,6 +45,7 @@ either renders identically.
 
 What the PC branch adds on top:
 
+* **The Reckoning and Ground Zero**, playing in VR rather than merely loading.
 * **A PC Options page** - render resolution, antialiasing, extended view
   distance, HUD height, and what the desktop window does.
 * **A desktop mirror worth streaming** - borderless full screen by default,
@@ -103,6 +104,51 @@ ninja -C build-mingw
 7.41 relies on the old behaviour.
 
 `tools/package-release.sh <dir>` assembles a self-contained, portable folder.
+
+## The mission packs
+
+Both official expansions play in VR. Team Beef's standalone is base Quake II
+only, so this is not a port of anything of theirs - it is their VR changeset
+applied to yquake2's own ports of the mission pack game code, `XATRIX_2_06` and
+`ROGUE_2_05`, the releases current when yquake2 7.41 shipped.
+
+You need your own copy of each. `tools/package-release.sh` picks them up from
+the same install it takes Quake II from and writes a launcher for each.
+
+The DLLs Steam and the discs ship cannot be used, and not only because they are
+32-bit: Team Beef added three function pointers to `game_import_t`, so a game
+library built against the stock header reads every field after them at the wrong
+offset. They also changed `shared.h` in ways that move every field the engine
+and a game library pass between them - `player_state_t` is 208 bytes here where
+stock's is 184. Each pack's `shared.h` is therefore a copy of the engine's with
+only the include guard renamed, so the layouts cannot drift.
+
+What is worth knowing before playing:
+
+* **The nine new weapons have untuned offsets.** Every weapon the packs share
+  with Quake II keeps Team Beef's tuned `vr_weapon_adjustment` values, because
+  both packs use the same `WEAP_` numbering for those. The Ionripper, Phalanx,
+  ETF Rifle, Prox Launcher, Plasma Beam, Chainfist and Disruptor start at the
+  engine's default and want adjusting by eye - each pack's `autoexec.cfg` names
+  them.
+* **The Plasma Beam draws from the face.** Its start point is computed
+  client-side from `cl.refdef.vieworg` plus `gunoffset`, and `gunoffset` is zero
+  in VR. The damage trace is already correct; the beam is not.
+* **The weapon wheels are checked, not assumed.** `vrwheel` at the console
+  prints each segment beside the server's own name for that inventory index and
+  says whether the icon loads. All 46 segments across both packs verify.
+
+There is no game select page in the headset yet; each game has its own launcher.
+An in-game switch would need a process relaunch, because changing gamedir ends
+in `vid_restart`, which destroys the GL context the OpenXR swapchain images
+belong to.
+
+**The 2023 remaster's content is not reachable from here.** Call of the Machine
+uses the extended `QBSP` map format - `maps/mgu1m1.bsp` in the remaster's pak
+begins `QBSP`, not `IBSP` - which yquake2 only learned to read in 8.x, and its
+gameplay lives in KEX game code with monsters and entities this lineage does not
+have. Reaching it would mean giving up the 7.41 base that makes Team Beef's
+changeset apply verbatim.
 
 ## Game data — not included, and not includable
 
