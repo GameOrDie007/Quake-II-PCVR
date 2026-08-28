@@ -238,16 +238,14 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
                     if ((primaryButtonsNew & ovrButton_GripTrigger) &&
                         !(secondaryButtonsNew & ovrButton_GripTrigger)) {
                         activeController = pDominantTracking; // regardless of handedness or stick assignment, makes sense to use the weapon hand for the weapon wheel
-                        iconList = weaponIcons;
                         isItems = false;
-                        totalIcons = 11;
+                        iconList = CL_WheelIcons(isItems, &totalIcons); // was weaponIcons and a hardcoded 11 - the mission packs have their own
                         active = true;
                     } else if ((primaryJoystickNew.y < -0.9f) &&
                                !(secondaryJoystickNew.y < -0.9f)) {
                         activeController = pDominantTracking; // conversely, makes sense to use the off hand for the item wheel
-                        iconList = itemIcons;
                         isItems = true;
-                        totalIcons = 6;
+                        iconList = CL_WheelIcons(isItems, &totalIcons); // was itemIcons and a hardcoded 6
                         active = true;
                     } else {
                         active = false;
