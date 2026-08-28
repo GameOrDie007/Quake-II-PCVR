@@ -40,6 +40,14 @@ cvar_t *filterban;
 cvar_t *sv_maxvelocity;
 cvar_t *sv_gravity;
 
+//VR Stuff
+cvar_t *r_lefthand;
+cvar_t *vr_worldscale;
+cvar_t *vr_height_adjust;
+cvar_t *vr_lasersight;
+cvar_t *vr_weapon_stabilised;
+cvar_t *vr_jump_sound;
+
 cvar_t *sv_rollspeed;
 cvar_t *sv_rollangle;
 cvar_t *gun_x;

@@ -24,6 +24,9 @@
 static qboolean is_quad;
 static byte damage_multiplier;
 static byte is_silenced;
+extern	cvar_t	*r_lefthand;
+extern	cvar_t	*vr_weapon_stabilised;
+extern  cvar_t  *vr_lasersight;
 
 void weapon_grenade_fire(edict_t *ent, qboolean held);
 
@@ -333,6 +336,7 @@ ChangeWeapon(edict_t *ent)
 	ent->client->weaponstate = WEAPON_ACTIVATING;
 	ent->client->ps.gunframe = 0;
 	ent->client->ps.gunindex = gi.modelindex(ent->client->pers.weapon->view_model);
+	ent->client->ps.weapmodel = ent->client->pers.weapon->weapmodel;
 
 	ent->client->anim_priority = ANIM_PAIN;
 
@@ -601,6 +605,15 @@ Weapon_Generic(edict_t *ent, int FRAME_ACTIVATE_LAST, int FRAME_FIRE_LAST, int F
 		return;
 	}
 
+	//Laser sight?
+	if (vr_lasersight->value != 0.0f)
+	{
+		gi.WriteByte (svc_temp_entity);
+		gi.WriteByte (TE_LASER_SIGHT);
+		gi.WriteByte (ent->client->pers.weapon->weapmodel);
+		gi.multicast (ent->s.origin, MULTICAST_PHS);
+	}
+
 	if (ent->client->weaponstate == WEAPON_READY)
 	{
 		if (((ent->client->latched_buttons |
@@ -648,7 +661,7 @@ Weapon_Generic(edict_t *ent, int FRAME_ACTIVATE_LAST, int FRAME_FIRE_LAST, int F
 				return;
 			}
 
-			if (pause_frames)
+/*			if (pause_frames)
 			{
 				for (n = 0; pause_frames[n]; n++)
 				{
@@ -661,8 +674,9 @@ Weapon_Generic(edict_t *ent, int FRAME_ACTIVATE_LAST, int FRAME_FIRE_LAST, int F
 					}
 				}
 			}
-
-			ent->client->ps.gunframe++;
+*/
+			//Don't play weapon idle anims
+			//ent->client->ps.gunframe++;
 			return;
 		}
 	}
@@ -734,15 +748,19 @@ weapon_grenade_fire(edict_t *ent, qboolean held)
 
 	if (ent->client->pers.weapon->tag == AMMO_TESLA)
 	{
-		VectorSet(offset, 0, -4, ent->viewheight - 22);
+		VectorSet(offset, 0, 0, 0);
+		//VectorSet(offset, 0, -4, ent->viewheight - 22);
 	}
 	else
 	{
-		VectorSet(offset, 2, 6, ent->viewheight - 14);
+		VectorSet(offset, 0, 0, 0);
+		//VectorSet(offset, 2, 6, ent->viewheight - 14);
 	}
 
 	P_ProjectSource2(ent->client, ent->s.origin, offset,
 			forward, right, up, start);
+
+	gi.HapticVibrate(120, 1 - r_lefthand->value, 0.6);
 
 	timer = ent->client->grenade_time - level.time;
 	speed = GRENADE_MINSPEED + (GRENADE_TIMER - timer) * ((GRENADE_MAXSPEED - GRENADE_MINSPEED) / GRENADE_TIMER);
@@ -808,6 +826,14 @@ Throw_Generic(edict_t *ent, int FRAME_FIRE_LAST, int FRAME_IDLE_LAST, int FRAME_
 	if (!ent || !pause_frames || !fire)
 	{
 		return;
+	}
+
+	//Laser sight - always as a short pointer for a thrown weapon
+	if (vr_lasersight->value != 0.0f) {
+		gi.WriteByte(svc_temp_entity);
+		gi.WriteByte(TE_LASER_SIGHT);
+		gi.WriteByte(ent->client->pers.weapon->weapmodel);
+		gi.multicast(ent->s.origin, MULTICAST_PHS);
 	}
 
 	if ((ent->client->newweapon) && (ent->client->weaponstate == WEAPON_READY))
@@ -1032,7 +1058,8 @@ weapon_grenadelauncher_fire(edict_t *ent)
 		damage *= damage_multiplier;
 	}
 
-	VectorSet(offset, 8, 8, ent->viewheight - 8);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 8, 8, ent->viewheight - 8);
 	AngleVectors(ent->client->v_angle, forward, right, NULL);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
 
@@ -1062,6 +1089,9 @@ weapon_grenadelauncher_fire(edict_t *ent)
 	{
 		ent->client->pers.inventory[ent->client->ammo_index]--;
 	}
+
+
+	gi.HapticVibrate(120, 1 - r_lefthand->value, 0.6);
 }
 
 void
@@ -1131,9 +1161,12 @@ Weapon_RocketLauncher_Fire(edict_t *ent)
 	VectorScale(forward, -2, ent->client->kick_origin);
 	ent->client->kick_angles[0] = -1;
 
-	VectorSet(offset, 8, 8, ent->viewheight - 8);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 8, 8, ent->viewheight - 8);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
 	fire_rocket(ent, start, forward, damage, 650, damage_radius, radius_damage);
+
+	gi.HapticVibrate(120, 1 - r_lefthand->value, 1.0);
 
 	/* send muzzle flash */
 	gi.WriteByte(svc_muzzleflash);
@@ -1193,14 +1226,17 @@ Blaster_Fire(edict_t *ent, vec3_t g_offset, int damage,
 	}
 
 	AngleVectors(ent->client->v_angle, forward, right, NULL);
-	VectorSet(offset, 24, 8, ent->viewheight - 8);
-	VectorAdd(offset, g_offset, offset);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 24, 8, ent->viewheight - 8);
+	//VectorAdd(offset, g_offset, offset);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
 
 	VectorScale(forward, -2, ent->client->kick_origin);
 	ent->client->kick_angles[0] = -1;
 
-	fire_blaster(ent, start, forward, damage, 1000, effect, hyper);
+	fire_blaster(ent, start, forward, damage, 1800, effect, hyper);
+
+	gi.HapticVibrate(120, 1 - r_lefthand->value, 0.4);
 
 	/* send muzzle flash */
 	gi.WriteByte(svc_muzzleflash);
@@ -1427,14 +1463,23 @@ Machinegun_Fire(edict_t *ent)
 		kick *= damage_multiplier;
 	}
 
-	for (i = 1; i < 3; i++)
+	if (vr_weapon_stabilised->value == 1.0f)
 	{
-		ent->client->kick_origin[i] = crandom() * 0.35;
-		ent->client->kick_angles[i] = crandom() * 0.7;
-	}
+		for (i=1 ; i<3 ; i++)
+		{
+			ent->client->kick_origin[i] = crandom() * 0.2;
+			ent->client->kick_angles[i] = crandom() * 0.2;
+		}
+		ent->client->kick_origin[0] = crandom() * 0.2;
+	} else {
+		for (i = 1; i < 3; i++) {
+			ent->client->kick_origin[i] = crandom() * 0.35;
+			ent->client->kick_angles[i] = crandom() * 0.7;
+		}
 
-	ent->client->kick_origin[0] = crandom() * 0.35;
-	ent->client->kick_angles[0] = ent->client->machinegun_shots * -1.5;
+		ent->client->kick_origin[0] = crandom() * 0.35;
+		ent->client->kick_angles[0] = ent->client->machinegun_shots * -1.5;
+	}
 
 	/* raise the gun as it is firing */
 	if (!deathmatch->value)
@@ -1450,10 +1495,13 @@ Machinegun_Fire(edict_t *ent)
 	/* get start / end positions */
 	VectorAdd(ent->client->v_angle, ent->client->kick_angles, angles);
 	AngleVectors(angles, forward, right, NULL);
-	VectorSet(offset, 0, 8, ent->viewheight - 8);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 0, 8, ent->viewheight - 8);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
 	fire_bullet(ent, start, forward, damage, kick, DEFAULT_BULLET_HSPREAD,
 			DEFAULT_BULLET_VSPREAD, MOD_MACHINEGUN);
+
+	gi.HapticVibrate(20, 1 - r_lefthand->value, 0.7);
 
 	gi.WriteByte(svc_muzzleflash);
 	gi.WriteShort(ent - g_edicts);
@@ -1692,7 +1740,8 @@ weapon_shotgun_fire(edict_t *ent)
 	VectorScale(forward, -2, ent->client->kick_origin);
 	ent->client->kick_angles[0] = -2;
 
-	VectorSet(offset, 0, 8, ent->viewheight - 8);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 0, 8, ent->viewheight - 8);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
 
 	if (is_quad)
@@ -1725,6 +1774,8 @@ weapon_shotgun_fire(edict_t *ent)
 	{
 		ent->client->pers.inventory[ent->client->ammo_index]--;
 	}
+
+	gi.HapticVibrate(120, 1 - r_lefthand->value, 0.6);
 }
 
 void
@@ -1762,7 +1813,8 @@ weapon_supershotgun_fire(edict_t *ent)
 	VectorScale(forward, -2, ent->client->kick_origin);
 	ent->client->kick_angles[0] = -2;
 
-	VectorSet(offset, 0, 8, ent->viewheight - 8);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 0, 8, ent->viewheight - 8);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
 
 	if (is_quad)
@@ -1795,6 +1847,8 @@ weapon_supershotgun_fire(edict_t *ent)
 	{
 		ent->client->pers.inventory[ent->client->ammo_index] -= 2;
 	}
+
+	gi.HapticVibrate(120, 1 - r_lefthand->value, 0.8);
 }
 
 void
@@ -1857,9 +1911,12 @@ weapon_railgun_fire(edict_t *ent)
 	VectorScale(forward, -3, ent->client->kick_origin);
 	ent->client->kick_angles[0] = -3;
 
-	VectorSet(offset, 0, 7, ent->viewheight - 8);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 0, 7, ent->viewheight - 8);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
 	fire_rail(ent, start, forward, damage, kick);
+
+	gi.HapticVibrate(120, 1 - r_lefthand->value, 0.9);
 
 	/* send muzzle flash */
 	gi.WriteByte(svc_muzzleflash);
@@ -1957,9 +2014,12 @@ weapon_bfg_fire(edict_t *ent)
 	ent->client->v_dmg_roll = crandom() * 8;
 	ent->client->v_dmg_time = level.time + DAMAGE_TIME;
 
-	VectorSet(offset, 8, 8, ent->viewheight - 8);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 8, 8, ent->viewheight - 8);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
 	fire_bfg(ent, start, forward, damage, 400, damage_radius);
+
+	gi.HapticVibrate(120, 1 - r_lefthand->value, 1.0);
 
 	ent->client->ps.gunframe++;
 
@@ -2020,8 +2080,11 @@ weapon_chainfist_fire(edict_t *ent)
 	ent->client->kick_angles[0] = -1;
 
 	/* set start point */
-	VectorSet(offset, 0, 8, ent->viewheight - 4);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 0, 8, ent->viewheight - 4);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
+
+	gi.HapticVibrate(20, 1 - r_lefthand->value, 0.3);
 
 	fire_player_melee(ent, start, forward, CHAINFIST_REACH, damage,
 			100, 1, MOD_CHAINFIST);
@@ -2047,7 +2110,8 @@ chainfist_smoke(edict_t *ent)
 	}
 
 	AngleVectors(ent->client->v_angle, forward, right, up);
-	VectorSet(offset, 8, 8, ent->viewheight - 4);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 8, 8, ent->viewheight - 4);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, tempVec);
 
 	gi.WriteByte(svc_temp_entity);
@@ -2185,8 +2249,11 @@ weapon_tracker_fire(edict_t *self)
 	VectorSet(mins, -16, -16, -16);
 	VectorSet(maxs, 16, 16, 16);
 	AngleVectors(self->client->v_angle, forward, right, NULL);
-	VectorSet(offset, 24, 8, self->viewheight - 8);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 24, 8, self->viewheight - 8);
 	P_ProjectSource(self->client, self->s.origin, offset, forward, right, start);
+
+	gi.HapticVibrate(120, 1 - r_lefthand->value, 0.8);
 
 	VectorMA(start, 8192, forward, end);
 	enemy = NULL;
@@ -2310,17 +2377,21 @@ weapon_etf_rifle_fire(edict_t *ent)
 
 	if (ent->client->ps.gunframe == 6) /* right barrel */
 	{
-		VectorSet(offset, 15, 8, -8);
+		VectorSet(offset, 0, 0, 0);
+		//VectorSet(offset, 15, 8, -8);
 	}
 	else /* left barrel */
 	{
-		VectorSet(offset, 15, 6, -8);
+		VectorSet(offset, 0, 0, 0);
+		//VectorSet(offset, 15, 6, -8);
 	}
 
 	VectorCopy(ent->s.origin, tempPt);
-	tempPt[2] += ent->viewheight;
+	//tempPt[2] += ent->viewheight;
 	P_ProjectSource2(ent->client, tempPt, offset, forward, right, up, start);
 	fire_flechette(ent, start, forward, damage, 750, kick);
+
+	gi.HapticVibrate(20, 1 - r_lefthand->value, 0.5);
 
 	/* send muzzle flash */
 	gi.WriteByte(svc_muzzleflash);
@@ -2424,13 +2495,17 @@ Heatbeam_Fire(edict_t *ent)
 	AngleVectors(ent->client->v_angle, forward, right, up);
 
 	/* This offset is the "view" offset for the beam start (used by trace) */
-	VectorSet(offset, 7, 2, ent->viewheight - 3);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 7, 2, ent->viewheight - 3);
 	P_ProjectSource(ent->client, ent->s.origin, offset, forward, right, start);
 
 	/* This offset is the entity offset */
-	VectorSet(offset, 2, 7, -3);
+	VectorSet(offset, 0, 0, 0);
+	//VectorSet(offset, 2, 7, -3);
 
 	fire_heat(ent, start, forward, offset, damage, kick, false);
+
+	gi.HapticVibrate(20, 1 - r_lefthand->value, 0.4);
 
 	/* send muzzle flash */
 	gi.WriteByte(svc_muzzleflash);
