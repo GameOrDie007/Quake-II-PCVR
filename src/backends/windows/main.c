@@ -30,6 +30,8 @@
 #include <SDL2/SDL_main.h>
 
 #include "../../common/header/common.h"
+
+void Sys_WaitForRelaunch(int argc, char **argv);
 #ifndef DEDICATED_ONLY
 #include "../../vr/vr_surface.h"
 #endif
@@ -41,6 +43,11 @@
 int
 main(int argc, char **argv)
 {
+	/* If this instance was started by another one to change game, the old one
+	   has to be gone before OpenXR will hand this one a session. Phase one of
+	   the bring-up happens inside Qcommon_Init, so this cannot wait. */
+	Sys_WaitForRelaunch(argc, argv);
+
 	// Setup FPU if necessary.
 	Sys_SetupFPU();
 
