@@ -46,6 +46,8 @@ either renders identically.
 What the PC branch adds on top:
 
 * **The Reckoning and Ground Zero**, playing in VR rather than merely loading.
+* **A game select page** in front of Single Player, listing whichever games
+  are installed.
 * **A PC Options page** - render resolution, antialiasing, extended view
   distance, HUD height, and what the desktop window does.
 * **A desktop mirror worth streaming** - borderless full screen by default,
@@ -105,6 +107,40 @@ ninja -C build-mingw
 
 `tools/package-release.sh <dir>` assembles a self-contained, portable folder.
 
+## Installing
+
+A release is binaries and a script - about 16MB, with no game data in it.
+
+1. Extract it anywhere.
+2. Run **`Setup.bat`** once.
+3. Run **`Play Quake II VR.bat`**.
+
+Setup finds your Quake II install, copies the game, whichever expansions you
+own and the soundtrack out of it, and builds the weapon wheel artwork from
+the same data. Nothing is downloaded and nothing leaves your machine. It
+needs Python 3, and Pillow as well for the artwork - it will say so if either
+is missing, and the game still runs without them.
+
+If Setup cannot find Quake II, set `Q2VR_QUAKEDIR` to the folder holding
+`baseq2` and run it again, or copy the paks in by hand and run it again to do
+the rest.
+
+The soundtrack comes from the 2023 remaster's `music` folder, which the Steam
+release bundles - retail Quake II played it off the CD and no download has it.
+That is also where Team Beef's music came from; the filenames match exactly.
+
+**Team Beef's own assets are not included and cannot be.** `pak6.pak` is
+147MB of HD world textures, `pak99.pak` the HD viewmodels the weapon offsets
+assume, and `vignette.tga` the comfort mask. Without them the game plays the
+same with retail artwork - the wheel icons are generated from your own paks,
+and the comfort mask is skipped rather than drawn as a missing texture. If
+you have their standalone's data, put those three files in an `extras` folder
+and run Setup again.
+
+The folder is self-contained: config, saves and screenshots are all written
+inside it, so backing it up backs up everything and copying it to another PC
+carries your settings along.
+
 ## The mission packs
 
 Both official expansions play in VR. Team Beef's standalone is base Quake II
@@ -138,10 +174,12 @@ What is worth knowing before playing:
   prints each segment beside the server's own name for that inventory index and
   says whether the icon loads. All 46 segments across both packs verify.
 
-There is no game select page in the headset yet; each game has its own launcher.
-An in-game switch would need a process relaunch, because changing gamedir ends
-in `vid_restart`, which destroys the GL context the OpenXR swapchain images
-belong to.
+Single Player opens a game list when more than one is installed, and picking
+a different one restarts the engine into it - `relaunchgame` rebuilds the
+command line, and the new instance waits on the old one's pid before touching
+OpenXR. It restarts rather than switching in place because a gamedir change
+ends in `vid_restart`, and `VID_Shutdown` destroys the GL context the OpenXR
+swapchain images belong to. Each game also keeps its own launcher.
 
 **The 2023 remaster's content is not reachable from here.** Call of the Machine
 uses the extended `QBSP` map format - `maps/mgu1m1.bsp` in the remaster's pak
@@ -150,30 +188,21 @@ gameplay lives in KEX game code with monsters and entities this lineage does not
 have. Reaching it would mean giving up the 7.41 base that makes Team Beef's
 changeset apply verbatim.
 
-## Game data — not included, and not includable
+## What Team Beef's assets are worth
 
-You need your own copy of Quake II, and Team Beef's assets from their APK.
-Neither is redistributable here.
-
-Into `baseq2/` alongside the binary:
-
-| from | files |
-|---|---|
-| your Quake II install | `pak0.pak`, `pak1.pak`, `pak2.pak`, `video/`, `players/` |
-| Team Beef's Quake2Quest | `pak6.pak`, `pak99.pak`, `autoexec.cfg`, `music/`, `vignette.tga`, `wheel/` |
-
-Their assets are not optional extras — they are most of what the game looks
-like:
+Setup builds a complete install without them, but they are most of what their
+standalone looks like, and if you have their data it is worth putting in:
 
 - **`pak99.pak`** — HD weapon models. Their viewmodels have no arm, which is
-  why the standalone shows just the gun.
-- **`pak6.pak`** — 147MB of HD world textures. **Inert unless
-  `gl_retexturing` is `1`.** Without it the world looks like plain retail
-  Quake II.
-- **`autoexec.cfg`** — per-weapon offsets, commented "the default for the HD
-  weapon models". The alignment they tuned assumes `pak99`.
-
-The Steam release ships no CD audio, so music comes from their `music/` folder.
+  why the standalone shows just the gun, and the `vr_weapon_adjustment` values
+  Setup writes were tuned against these. With retail models the alignment is
+  close rather than exact.
+- **`pak6.pak`** — 147MB of HD world textures. **Inert unless `gl_retexturing`
+  is `1`**, which Setup writes to `autoexec.cfg` only when the pak is there.
+- **`vignette.tga`** — the comfort mask. Skipped when absent rather than drawn
+  as a missing texture.
+- **`wheel/`** — their weapon wheel art. Setup draws its own from your paks
+  where theirs is missing, and prefers theirs wherever it is present.
 
 ## Known
 
