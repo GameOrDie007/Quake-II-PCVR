@@ -719,7 +719,32 @@ void SCR_DrawVignette (float separation)
 		int w = (int)(viddef.width  * (1.0f - currentVLevel));
 		int h = (int)(viddef.height * (1.0f - currentVLevel));
 
-		re.DrawStretchPic(x, y, w, h, "/vignette.tga");
+		/*
+		 * The mask is Team Beef's own artwork and is not in anybody's Quake II
+		 * install, so a setup that could not find it has no vignette.tga at all.
+		 * Drawing a pic the renderer cannot find puts its missing-texture
+		 * checkerboard over the view, which is a great deal worse than no comfort
+		 * mask. Asked once, because this runs per eye per frame.
+		 */
+		static int haveMask = -1;
+
+		if (haveMask < 0)
+		{
+			int mw = -1, mh = -1;
+
+			Draw_GetPicSize(&mw, &mh, "/vignette.tga");
+			haveMask = (mw > 0);
+
+			if (!haveMask)
+			{
+				Com_Printf("VR: no vignette.tga - the comfort mask is off\n");
+			}
+		}
+
+		if (haveMask)
+		{
+			re.DrawStretchPic(x, y, w, h, "/vignette.tga");
+		}
 	}
 }
 
