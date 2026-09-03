@@ -111,7 +111,12 @@ void
 CL_DrawInventory(float separation)
 {
     if(!draw_item_wheel) { // do not draw if weapon wheel is being drawn
-        Com_Printf("qiqiqiqi      inventory drawn at %i", Sys_Milliseconds());
+        /*
+         * A Com_Printf of theirs sat here, once per frame the inventory was up
+         * ("qiqiqiqi      inventory drawn at %i"). Com_Printf reaches the notify
+         * area as well as the log, so holding Y wrote a wall of it across the
+         * top of the view and filled qconsole.log. Debug they left behind.
+         */
         int i, j;
         int num, selected_num, item;
         int index[MAX_ITEMS];
@@ -156,7 +161,15 @@ CL_DrawInventory(float separation)
         }
 
         x = (viddef.width - scale * 256) / 2;
-        y = viddef.height / 2;
+        /*
+         * Stock centres the 240-tall inventory block; Team Beef anchored it at
+         * the vertical centre instead, so it could only grow downward and on a
+         * PC eye buffer it landed below where it can comfortably be read. This
+         * is the same restoration as cl_screen.c's yv, in the one piece of the
+         * UI that draws itself rather than going through a layout string - note
+         * x was left alone by them and is stock already.
+         */
+        y = (viddef.height - scale * 240) / 2;
 
         /* repaint everything next frame */
         SCR_DirtyScreen();
