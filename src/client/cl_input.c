@@ -878,16 +878,34 @@ CL_SendCmd(void)
 		 * that gets stuck later.
 		 */
 		int skipButtons = cmd->buttons;
+		qboolean skip;
 
 		if (TBXR_IsRunning())
 		{
 			skipButtons &= ~BUTTON_ANY;
 		}
 
-		if (skipButtons && (cl.cinematictime > 0) && !cl.attractloop &&
+		/*
+		 * Masking BUTTON_ANY above left the trigger working and the face
+		 * buttons not, because only the trigger sets a bit in cmd->buttons at
+		 * all. Team Beef's map sends the other two through movement instead:
+		 * one is K_SPACE bound to +moveup, the other a direct +movedown
+		 * console command, and both land in cmd->upmove. So a press that
+		 * plainly means "get on with it" was being ignored.
+		 *
+		 * Any deliberate input now counts, whichever route it takes. upmove is
+		 * driven only by the in_up/in_down key states - not by head or
+		 * room-scale movement, which never reach it - so this cannot fire on
+		 * its own, and the one-second guard below still stops a held button
+		 * from skipping the moment a cinematic starts.
+		 */
+		skip = (skipButtons != 0) || (cmd->upmove != 0);
+
+		if (skip && (cl.cinematictime > 0) && !cl.attractloop &&
 			(cls.realtime - cl.cinematictime > 1000))
 		{
-			Com_DPrintf("Cinematic skipped, buttons=%d\n", cmd->buttons);
+			Com_DPrintf("Cinematic skipped, buttons=%d upmove=%d\n",
+					cmd->buttons, cmd->upmove);
 			/* skip the rest of the cinematic */
 			SCR_FinishCinematic();
 		}
