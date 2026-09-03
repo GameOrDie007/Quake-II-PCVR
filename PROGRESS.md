@@ -1264,3 +1264,96 @@ headlessly printed `Unknown command`.
 
 The mirror itself needs a headset: `STEREO_OPENXR` is never reached without
 one.
+# The paused menu in the world — defects A and B
+
+Both reported by the owner from a headset session on 2026-09-03, against the
+`vr_menu_in_world` feature added earlier the same day. Diagnosed in
+`HANDOFF.md`, fixed here.
+
+## A. The menu would not fuse
+
+`menu.c` never called `SCR_GetStereoHudOffset`, and never needed to: menus
+always went to the flat screen layer, where one quad is shown to both eyes.
+Kept in the world, the menu was drawn into both eye buffers at identical screen
+coordinates, so the eyes disagreed about where it was and it read as double
+vision.
+
+**The offset is applied in one place, not sixty.** The HUD threads `separation`
+down through every drawing function as a parameter. Menus cannot: `M_Draw()`
+takes no arguments, and the drawing is spread over `menu.c`, `qmenu.c` and
+`videomenu.c` through roughly sixty call sites. So `Draw_SetStereoOffset()` in
+`vid.c` holds a module-level pixel shift that `Draw_StretchPic`,
+`Draw_PicScaled`, `Draw_CharScaled`, `Draw_Fill` and `Draw_StretchRaw` add to
+their x. `cl_screen.c` sets it immediately before `M_Draw()` and zeroes it
+immediately after, so nothing else can pick it up. Same value, same units, same
+scheme as the HUD - only the point of application differs.
+
+**The menu keeps the depth it has always had.** `SCR_GetStereoHudOffset` places
+things at `vr_hud_depth`, 0.5m. Menus have always hung on the screen layer at
+`vr_screen_depth`, 3.5m. Drawing a near-fullscreen panel at 0.5m would shove it
+to arm's length and move it from where the player is used to seeing it, so
+`SCR_GetStereoMenuOffset` asks `SCR_GetStereoHudOffsetScaled` for the screen
+layer's depth instead. That function already existed for exactly this - it
+scales the parallax term and leaves the FOV-centring term alone.
+
+**What is not covered.** Two things in `menu.c` draw outside the bracket and so
+get no offset:
+
+- `R_RenderFrame` at `:5251`, the spinning player model on the Multiplayer ->
+  Player Setup page. An x shift would move the viewport but not the model
+  inside it, so it needs its own treatment or none. It is left alone.
+- `M_Popup()` followed by `R_EndFrame()` at `:1421` and `:3526` - the "restarting
+  the sound system" and "searching for local servers" messages, which force a
+  buffer swap from inside a key handler. Mid-frame swaps from a menu callback
+  are already hostile to a stereo path; this does not make them worse.
+
+## B. The world went black behind the menu
+
+`M_Draw` called `Draw_FadeScreen()`, which lays 80% black over the whole
+framebuffer. Correct when that framebuffer is a flat panel. In the world it dims
+the world - the one thing pausing in VR exists to keep visible. It is now
+skipped when `VR_MenuInWorld()`.
+
+Photographed at the desk before deciding: with no fade the menu is still easy to
+read, because the main menu's items are opaque plaques (`m_main_*`) rather than
+bare text. If a headset says otherwise, the next step is a partial fade, which
+needs an alpha argument threaded through `refexport_t` to `RDraw_FadeScreen` in
+all three renderers.
+
+## Verified without a headset
+
+The build is one process with no headset attached, so `TBXR_IsRunning()` is
+false and `VR_MenuInWorld()` cannot be true. That makes the flatscreen run a
+no-regression test, and a temporary forced offset makes it a plumbing test.
+Both were driven by a generated config of `map base1`, two hundred `wait`s,
+`menu_main`, `screenshot`, `quit`, executed with
+`+exec dbgshot.cfg`.
+
+- **Every menu primitive really goes through the choke point.** With the offset
+  forced to +40px, the QUAKE II plaque, the id logo, the cursor, all five main
+  menu items and the selection highlight all moved by 40px. The world and the
+  HUD did not. Nothing was left behind.
+- **A temporary `Com_Printf` probe** read the offset actually handed to
+  `Draw_SetStereoOffset` each frame: 0 whenever the menu was up, and the HUD's
+  own +-507 during gameplay. The guard in `SCR_GetStereoHudOffsetScaled` holds.
+- **Flatscreen is unchanged**, measured rather than eyeballed. The menu band of
+  the shipping build's screenshot differs from the pre-change build by at most
+  24 (sum over three channels, out of 765). Shifting the same image by a single
+  pixel produces a max of 163 in that band, so the test would have caught a 1px
+  move. The remaining difference is the world's own animation.
+- **The fade still happens flatscreen**: mean world luminance 3.74 in the
+  shipping build against 18.73 with the fade suppressed - still the 0.2x that
+  alpha 0.8 gives.
+
+None of this can test the thing that matters most, which is whether the eyes
+fuse. The offset's arithmetic is the HUD's, and the HUD fuses; what a headset
+has to confirm is that 3.5m is a comfortable place for a menu to sit.
+
+## A trap worth recording
+
+Running the game from the build tree leaves a **hung `yquake2.exe` behind on
+every `quit`** - it releases its file handles but never exits, and
+`Stop-Process -Force` does not shift it. It blocks the next link with
+`cannot open output file release\yquake2.exe: Permission denied`. Renaming the
+exe out of the way lets the link proceed; Windows is happy to rename a running
+image. Four of them accumulated over four runs this session.

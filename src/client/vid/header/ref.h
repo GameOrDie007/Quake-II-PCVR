@@ -256,6 +256,14 @@ struct image_s *Draw_FindPic(char *name);
 void R_RenderFrame(refdef_t *fd);
 void Draw_GetPicSize(int *w, int *h, char *name);
 
+/* Shifts every 2D primitive below horizontally. Menus draw through dozens of
+ * call sites in menu.c, qmenu.c and videomenu.c, so the per-eye offset the HUD
+ * threads through as a parameter is applied here instead - same arithmetic and
+ * the same units, one place. Set it around a block of drawing and zero it
+ * again; see SCR_GetStereoMenuOffset() and M_Draw()'s call site in
+ * cl_screen.c. */
+void Draw_SetStereoOffset(int offset);
+
 void Draw_StretchPic(int x, int y, int w, int h, char *name);
 void Draw_PicScaled(int x, int y, char *pic, float factor);
 
