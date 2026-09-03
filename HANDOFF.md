@@ -23,9 +23,10 @@ picture.
 
 ## What landed this session
 
-Defects A and B from the previous handoff, then C, which the headset found once
-A and B were in. All three fixed and desk-verified; A and B are headset-verified
-and C is not. Everything is still behind `vr_menu_in_world`, which defaults
+Defects A and B from the previous handoff; C, which the headset found once A and
+B were in; and D, the gaze-lock, which the owner asked to have fixed properly
+rather than cheaply. All four are desk-verified. A and B are headset-verified,
+C and D are not. Everything is still behind `vr_menu_in_world`, which defaults
 to 0.
 
 ### A. The pause menu now has a per-eye offset
@@ -68,6 +69,23 @@ when a menu opens.
 
 The HUD proper deliberately stays at `vr_hud_depth`.
 
+### D. The menu no longer rides the head
+
+`vr_menu_in_world` is three-way now: 0 off (Team Beef's), 1 in the eye buffers
+and following the head, 2 on a composition layer of its own and staying where it
+was opened. The PC Options item says "no / yes, follows gaze / yes, fixed in
+place".
+
+At 2 the eye pass skips `M_Draw()` and `SCR_DrawMenuLayer()` draws it once into
+a third swapchain, cleared transparent, submitted as a quad after the projection
+layer. PAUSED is on the layer too, so C cannot come back. Nothing on the layer
+takes a per-eye offset - the compositor is what makes a quad stereo.
+
+The quad is sized from the field of view so the menu keeps the size it already
+has, and placed at `vr_screen_depth`. If the swapchain cannot be created,
+`VR_MenuOwnLayer()` says so and the menu falls back to being drawn in the eye
+buffers, as at 1.
+
 ### What A does not cover
 
 - `R_RenderFrame` at `menu.c:5251`, the spinning player model on Multiplayer ->
@@ -78,19 +96,41 @@ The HUD proper deliberately stays at `vr_hud_depth`.
 
 ### How it was verified without a headset
 
-`TBXR_IsRunning()` is false with no headset, so `VR_MenuInWorld()` cannot be
-true and a flatscreen run is a no-regression test. Driven with a generated
-config - `map base1`, 200 `wait`s, `menu_main`, `screenshot`, `quit` - run as
-`+exec dbgshot.cfg`.
+**Read this before assuming you need the owner.** `VirtualDesktopXR` is
+installed on this machine, and while the owner has Virtual Desktop running a
+second process gets a **real OpenXR session of its own**. The whole VR path runs
+at the desk. Check for it with:
+
+```
+grep -a "OpenXR runtime is\|session created\|creating swapchain" build-mingw/release/stdout.txt
+```
+
+Three `creating swapchain` lines means the menu layer's swapchain was made too.
+An earlier version of this file said the opposite - that `TBXR_IsRunning()` is
+false with no headset, so nothing could be tested. That was wrong, and it
+under-used the desk badly.
+
+Runs are driven with a generated config - `map base1`, 200 `wait`s, `menu_main`,
+`screenshot`, `quit` - executed with `+exec dbgshot.cfg`.
 
 - A temporary forced offset of +40px moved the plaque, the logo, the cursor, all
   five menu items and the highlight, and moved neither the world nor the HUD.
   That is the proof that nothing bypasses the choke point.
 - A temporary `Com_Printf` probe read the offset each frame: 0 with the menu up,
   the HUD's own +-507 during play.
-- Flatscreen is unchanged, measured: the menu band differs from the pre-change
-  build by at most 24 out of 765, where a 1px shift of the same image gives 163.
-- The fade still fires flatscreen: world luminance 3.74 against 18.73 unfaded.
+- With the feature off the menu is unchanged, measured: the menu band differs
+  from the pre-change build by at most 24 out of 765, where a 1px shift of the
+  same image gives 163. PAUSED cross-correlates to a minimum at +0 px.
+- The fade still fires with the feature off: world luminance 3.60 against 18.07.
+- The three modes were run one after another and screenshotted. 0 has the menu
+  centred over a dimmed world, 1 has it offset per eye over a lit world, 2 has
+  no menu in the eye buffer at all. Three runs, three different pictures, each
+  different in the right way.
+- The menu layer's own drawing was dumped with its alpha: correct layout on a
+  background 95.1% fully transparent.
+- The quad's geometry was logged: `7.754 x 8.378 m at 3.50 m` - 96 x 100 degrees,
+  the eye buffer's own field of view - at a pose 3.500m from the head, yaw only.
+- A full run submitting two composition layers produced no `XR_ERROR`.
 
 ## What the headset has already said
 
@@ -107,9 +147,21 @@ cannot persist, which is the whole of defect C from the previous handoff.
 
 ## What a headset session should check next
 
-1. **Does PAUSED sit with the menu now?** Pause in game with the menu open. The
-   sign should sit in the menu's plane, not float nearer.
-2. Then the things that have still never run in a headset, below.
+Everything below is `vr_menu_in_world 2`, set in PC Options as "yes, fixed in
+place". Falling back to 1 is one menu item away if 2 misbehaves.
+
+1. **Does the menu hang still when you turn your head?** That is the whole point
+   of 2.
+2. **Is it in the right place and the right size?** It is placed where the head
+   was looking when the menu opened, at `vr_screen_depth`, sized to the eye
+   buffer's own field of view - so it should appear where and how big it did at
+   1, just no longer moving.
+3. **Does PAUSED sit with it?** It is drawn onto the same layer now, so it should
+   be in the menu's plane rather than floating nearer.
+4. **Does the menu read as one menu?** A quad gets its stereo from the
+   compositor, so this should be automatic - but it is the thing that was wrong
+   twice already.
+5. Then the things that have still never run in a headset, below.
 
 ## Still open
 
@@ -129,19 +181,8 @@ cannot persist, which is the whole of defect C from the previous handoff.
 - **The Plasma Beam fix is unconfirmed.** The beam should lie exactly along the
   laser sight line; they share an origin and a recoiled aim now, so a divergence
   is a real bug.
-- **The menu is gaze-locked**, which the owner noticed and which is expected:
-  it is 2D drawn into the eye buffers, so it is welded to the view. Two ways to
-  fix it, of very different sizes, and **he has not yet said which he wants**:
-  - *Its own quad layer.* `layers[]` in `vr_surface.c` is already an array with a
-    `layerCount`, and `q2xrScreenLayerPose` is already a world-locked pose in
-    `StageSpace` at `vr_screen_depth`. What is missing is rendering only
-    `M_Draw()` into a separate alpha swapchain. Correct at any head angle.
-    Defect A was the prerequisite and is done.
-  - *A 2D counter-shift.* Record the view angles when the menu opens and offset
-    the menu by the angular delta each frame, through the same
-    `Draw_SetStereoOffset` choke point plus a y term. Small, reuses proven
-    plumbing, desk-testable with a forced angle - but a translation, not a
-    rotation, so no keystone and it degrades at large head angles.
+- **The menu layer has never been seen in a headset.** Everything about it that
+  can be measured has been; what it looks like has not.
 - **Not published.** There is no `origin` remote, only `upstream` yquake2. The
   Quake port shipped to github.com/GameOrDie007/Quake-PCVR on 2026-08-29; this
   one never did.
@@ -183,7 +224,8 @@ value. See [[vr-port-dump-the-buffer]] and [[vr-port-verify-before-asking]] in
 the owner's memory.
 
 **The Bash tool's heredocs eat backslashes**, which corrupted a `\n` into a
-literal newline inside a C string literal twice in the previous session. Write
+literal newline inside a C string literal twice in the previous session, and
+again in this one - in the very script written to record that it does. Write
 patch scripts with the Write tool, not a heredoc. The Bash tool's working
 directory also persists across calls and drifts after a `cd`, which silently
 turned one `ninja -C build-mingw` into a no-op; use absolute paths.

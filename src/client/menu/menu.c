@@ -1134,6 +1134,20 @@ static menuslider_s s_pcoptions_hud_slider;
 static menulist_s s_pcoptions_mirror_box;
 static menulist_s s_pcoptions_tune_box;
 static menulist_s s_pcoptions_inworld_box;
+
+/*
+ * "follows gaze" draws the menu into the eye buffers, so it is welded to the
+ * view; "fixed in place" gives it a composition layer of its own and it stays
+ * where it was opened. Both keep the world in its projection layer. Off is
+ * Team Beef's behaviour and the default.
+ */
+static const char *pc_inworld_names[] =
+{
+    "no",
+    "yes, follows gaze",
+    "yes, fixed in place",
+    0
+};
 static menulist_s s_pcoptions_action;
 static menuseparator_s s_pcoptions_note1;
 static menuseparator_s s_pcoptions_note2;
@@ -1910,8 +1924,13 @@ PCOptions_MenuInit(void)
     s_pcoptions_inworld_box.generic.y = (y += 10);
     s_pcoptions_inworld_box.generic.name = "pause without leaving vr";
     s_pcoptions_inworld_box.generic.callback = MenuInWorldFunc;
-    s_pcoptions_inworld_box.itemnames = pc_yesno_names;
-    s_pcoptions_inworld_box.curvalue = (inworld->value != 0);
+    s_pcoptions_inworld_box.itemnames = pc_inworld_names;
+    s_pcoptions_inworld_box.curvalue = (int)inworld->value;
+
+    if (s_pcoptions_inworld_box.curvalue < 0 || s_pcoptions_inworld_box.curvalue > 2)
+    {
+        s_pcoptions_inworld_box.curvalue = 0;
+    }
 
     /*
      * r_farsee is CVAR_LATCH, so Cvar_SetValue parks the new setting in
