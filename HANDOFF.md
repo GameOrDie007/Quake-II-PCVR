@@ -235,6 +235,43 @@ photograph the attract loop needs a different lever than .
 Backing the whole demo-in-world thing out is still one edit: put 
 back into .
 
+### 9. Nothing could skip a cutscene any more (fixed, desk-verified)
+
+Reported after 8: "I can't skip the starting level cutscene at all" - worse than
+before, when the trigger at least worked.
+
+**Item 1's two halves cancelled each other out.** Widening
+'s menu branch to cover  means the
+gameplay branch never runs during a movie - and 's skip reads
+ and , which only that branch builds. Both are
+therefore permanently zero during a cutscene, so the skip cannot fire, and the
+other half of item 1 (teaching it to count ) was left with nothing to
+count. The note beside the widening says losing gameplay input there "costs
+nothing, because there is no gameplay to lose". It cost the skip.
+
+**Reverting the widening is not available.**  is read off the
+server () and is false during the startup movie, which relies on
+the cinematictime clause to get key events at all.
+
+ in  now does it from the button state
+directly, doing what  would have. It keeps the one-second guard,
+edge-triggers so a held button is one skip rather than one per frame, and
+latches the cinematic it fired on so one press cannot send two s.
+
+**How it was tested with no controller:** a temporary console command set a
+one-shot flag standing in for a button edge, and  gave a
+cinematic with the server connection a real cutscene has. With  the
+log showed every guard passing - cinematictime 825 against realtime 7550,
+, attractloop 0 - then . Hook removed, grep clean. **This is the pattern for anything else
+that needs a button press at the desk.**
+
+The latch is taken on inspection: once the first skip lands, 
+changes the cinematic and the earlier guards take over, so no test isolates it.
+
+**Still not covered:** the startup id movie has no connection, and
+ writes  to the netchan, so it cannot work
+there. Dismissing that one still goes through the menu.
+
 ### 6. The HUD drew health and ammo on top of their own icons (fixed, desk-verified)
 
 `single_statusbar` (`g_spawn.c:725`) positions with **`xh`**, which is Team
