@@ -163,6 +163,40 @@ So A, B, C and D are done. What he found instead is four new things, below.
 
 ## Found in the headset 2026-09-03, not yet fixed
 
+### 7. The startup menu in the world (built, NOT verified)
+
+The owner asked whether the first menu - the one over the attract demo, after
+the id movie - could be in the world like the pause menu. It can, and it is one
+condition: the attract demo is served by a **local server in attract mode**, so
+the client sits at `ca_active` with a real world to draw. Team Beef sent it to
+the flat quad along with everything else that is not gameplay.
+
+`VR_InWorldEligible()` now carries the shared test - feature on, session running,
+`ca_active`, no cinematic - and `VR_MenuInWorld()` is that plus `key_dest ==
+key_menu`. `useScreenLayer()` is deliberately **wider**: it keeps the demo in the
+projection layer whether or not the menu is open, so that opening the menu does
+not flip the whole scene between a flat quad and stereo. The console is excluded
+and stays on the flat panel.
+
+**He was warned and chose it anyway.** The demo is a recorded fly-through, and a
+camera that moves without the head is the usual way to make someone ill. He
+picked "keep the demo" knowing that. If it is unpleasant, the whole thing backs
+out by putting `cl.attractloop` back into `VR_InWorldEligible()`.
+
+**Not covered:** the no-connection case. Skip the id movie and no demo plays -
+`cls.state` is `ca_disconnected`, there is no world at all, and the menu stays a
+flat panel. Making that one in-world needs the projection layer told to render a
+deliberately empty scene, which is real work and was not part of this.
+
+**Not verified, and it is worth knowing why.** Four desk runs failed to check it,
+each for a different reason, and the last one exposed something worth recording:
+**a session that is created but never reaches running freezes the game.**
+`q2xr_Frame` returns early while `gApp.SessionRunning` is false, and it is
+`q2xr_Frame` that calls `Qcommon_Frame` - so with Virtual Desktop up but the
+headset not streaming, nothing ticks at all. No map loads, no frame renders. That
+is also the state a player would land in if they launched with VD running and the
+headset asleep, so it is worth handling on its own account.
+
 ### 6. The HUD drew health and ammo on top of their own icons (fixed, desk-verified)
 
 `single_statusbar` (`g_spawn.c:725`) positions with **`xh`**, which is Team
@@ -316,9 +350,13 @@ thing that differs there and is worth looking at first.
 
 ## What a headset session should check next
 
-1. **Does A now skip the id movie and the opening cutscene, and does any button
+1. **The startup menu in the world.** Item 7 - built and never once run. Does
+   the demo behind the first menu render in stereo, does the menu hang in place,
+   and - the reason he was warned - is the demo's own camera motion bearable? If
+   not, that is one condition to back out.
+2. **Does A now skip the id movie and the opening cutscene, and does any button
    bring up the first menu?** Item 1 above.
-2. **Is the HUD still readable and sensibly placed?** Item 6 moved it; the
+3. **Is the HUD still readable and sensibly placed?** Item 6 moved it; the
    overlap is gone but the spacing has only been judged at the desk.
 3. Then the things that have still never run in a headset, below - the game
    select page and `relaunchgame` first, since that is the riskiest.
