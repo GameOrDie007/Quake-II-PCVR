@@ -632,12 +632,22 @@ Draw_GetPicSize(int *w, int *h, char *name)
 	}
 }
 
+/* Per-eye horizontal shift applied to the 2D primitives below. Zero everywhere
+ * except while the menu is drawn into the world in VR. */
+static int draw_stereo_offset = 0;
+
+void
+Draw_SetStereoOffset(int offset)
+{
+	draw_stereo_offset = offset;
+}
+
 void
 Draw_StretchPic(int x, int y, int w, int h, char *name)
 {
 	if (ref_active)
 	{
-		re.DrawStretchPic(x, y, w, h, name);
+		re.DrawStretchPic(x + draw_stereo_offset, y, w, h, name);
 	}
 }
 
@@ -646,7 +656,7 @@ Draw_PicScaled(int x, int y, char *pic, float factor)
 {
 	if (ref_active)
 	{
-		re.DrawPicScaled(x, y, pic, factor);
+		re.DrawPicScaled(x + draw_stereo_offset, y, pic, factor);
 	}
 }
 
@@ -655,7 +665,7 @@ Draw_CharScaled(int x, int y, int num, float scale)
 {
 	if (ref_active)
 	{
-		re.DrawCharScaled(x, y, num, scale);
+		re.DrawCharScaled(x + draw_stereo_offset, y, num, scale);
 	}
 }
 
@@ -673,7 +683,7 @@ Draw_Fill(int x, int y, int w, int h, int c)
 {
 	if (ref_active)
 	{
-		re.DrawFill(x, y, w, h, c);
+		re.DrawFill(x + draw_stereo_offset, y, w, h, c);
 	}
 }
 
@@ -691,7 +701,7 @@ Draw_StretchRaw(int x, int y, int w, int h, int cols, int rows, byte *data)
 {
 	if (ref_active)
 	{
-		re.DrawStretchRaw(x, y, w, h, cols, rows, data);
+		re.DrawStretchRaw(x + draw_stereo_offset, y, w, h, cols, rows, data);
 	}
 }
 

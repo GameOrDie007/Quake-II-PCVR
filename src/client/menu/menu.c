@@ -5403,7 +5403,10 @@ M_Draw(void)
         Draw_Fill(0, 0, viddef.width, viddef.height, 0);
     }
 
-    else
+    /* Draw_FadeScreen() lays 80% black over the whole framebuffer. That is a
+     * dimmed panel when the menu is a flat quad, but the whole world when it is
+     * not - the one thing pausing in VR exists to keep visible. */
+    else if (!VR_MenuInWorld())
     {
         Draw_FadeScreen();
     }

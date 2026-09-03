@@ -1067,6 +1067,31 @@ SCR_GetStereoHudOffset(float separation)
 	return SCR_GetStereoHudOffsetScaled(separation, 1.0f);
 }
 
+/*
+ * Per-eye offset for the menu. Menus used to be drawn on the flat screen layer,
+ * which hangs at vr_screen_depth (3.5m); the HUD sits much nearer, at
+ * vr_hud_depth (0.5m). Drawing the menu into the world at the HUD's depth would
+ * shove a near-fullscreen panel to arm's length and change where the player has
+ * always seen it, so ask for the screen layer's depth instead.
+ */
+static int
+SCR_GetStereoMenuOffset(float separation)
+{
+	float hud_depth = Cvar_VariableValue("vr_hud_depth");
+	float screen_depth = Cvar_VariableValue("vr_screen_depth");
+
+	if (hud_depth <= 0.0f)
+	{
+		hud_depth = 0.5f;
+	}
+	if (screen_depth <= 0.0f)
+	{
+		screen_depth = 3.5f;
+	}
+
+	return SCR_GetStereoHudOffsetScaled(separation, screen_depth / hud_depth);
+}
+
 void
 DrawNumberCenteredImageScaled(int x, int y, char* num, float scale)
 {
@@ -2515,7 +2540,14 @@ void SCR_UpdateForEye (int eye)
 
 			SCR_DrawConsole(separation);
 
+			/* The menu has no separation parameter of its own - M_Draw() takes
+			 * none, and the drawing is spread over three files. Hand the offset
+			 * to the 2D primitives instead, and take it back afterwards so
+			 * nothing else picks it up. Zero unless the menu is being drawn into
+			 * the world (VR_MenuInWorld()). */
+			Draw_SetStereoOffset(SCR_GetStereoMenuOffset(separation));
 			M_Draw();
+			Draw_SetStereoOffset(0);
 
 			SCR_DrawLoading();
 		}

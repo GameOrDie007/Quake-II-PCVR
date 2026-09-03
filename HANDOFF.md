@@ -1,4 +1,4 @@
-# Handoff — 2026-09-03
+# Handoff — 2026-09-03 (second)
 
 Written to hand this work to a fresh session. Read this first, then
 `PROGRESS.md` for the deeper history and `README-VR.md` for the player-facing
@@ -23,104 +23,84 @@ picture.
 
 ## What landed this session
 
-Three pieces, all built and desk-verified, none headset-verified except where
-said. Every one is off by default so an untouched install behaves as Team
-Beef's does.
+Defects A and B from the previous handoff, both fixed, both desk-verified,
+neither headset-verified. Everything is still behind `vr_menu_in_world`, which
+defaults to 0.
 
-### 1. Plasma Beam leaves the gun, not the face
+### A. The pause menu now has a per-eye offset
 
-`src/client/cl_tempentities.c`. The bug was two head-based assumptions, not the
-one previously recorded: the start point came from `vieworg + gunoffset` (zero
-in VR) *and* the basis copied into `f/r/u` was the view's, which further down
-replaced the beam's direction with wherever the head was looking. Both now come
-from the weapon. The laser sight's origin maths was extracted to
-`CL_VRGunOrigin()` and is shared, so the two cannot drift.
+`menu.c` had no `SCR_GetStereoHudOffset` call and never needed one - menus went
+to the flat screen layer, where both eyes see one quad. Kept in the world they
+drew at identical coordinates in both eye buffers, so they would not fuse.
 
-**Headset check:** the beam should lie exactly along the laser sight line. They
-now use the same origin and the same recoiled aim, so a divergence is a real
-bug.
+The offset is now applied in **one place**, because `M_Draw()` takes no
+arguments and menu drawing is spread over ~60 call sites in `menu.c`, `qmenu.c`
+and `videomenu.c`. `Draw_SetStereoOffset()` (`src/client/vid/vid.c`) holds a
+pixel shift that the `Draw_*` wrappers add to x; `cl_screen.c` sets it right
+before `M_Draw()` and zeroes it right after.
 
-### 2. Weapon alignment tuner
+The menu is placed at **`vr_screen_depth` (3.5m), not `vr_hud_depth` (0.5m)** -
+`SCR_GetStereoMenuOffset` in `cl_screen.c`. That is where the screen layer has
+always hung the menu, and a near-fullscreen panel at 0.5m would be at arm's
+length. **This is the number most likely to need changing after a headset
+session** - if the menu feels wrong, that ratio is the single knob.
 
-PC Options -> `weapon alignment`. Draws a readout in the game (not a menu page -
-see the note under "Why menus were the hard part") listing the six offset
-values for whatever is in hand, adjusted with the off hand's stick, grip held
-for finer steps. `vrweapon save` at the console writes them out.
+### B. The world is no longer blacked out
 
-- Input lives in `src/vr/vr_surface.c` (`q2xr_WeaponTuneInput`), on our side of
-  the seam - it reads the off hand's stick and zeroes it before Team Beef's
-  `HandleInput_Default` sees it, so you do not walk while tuning but everything
-  else stays theirs.
-- Labels are Team Beef's own words from their `autoexec.cfg` header -
-  "backwards, left, up, pitch (down), yaw, roll". Read `SetWeapon6DOF` alone and
-  the first axis looks like forward; the 180-degree pitch flip inverts it. Do
-  not "fix" these labels.
-- **Verified at the desk:** the readout draws, reads the correct weapmodel
-  index, parses the right cvar, and shows Team Beef's real values.
-  `vrweapon save` writes correctly and does not touch the owner's install.
-- **Not verified:** nothing has ever moved that stick. If it does nothing in the
-  headset, `q2xr_WeaponTuneInput` is where to look.
+`M_Draw` skips `Draw_FadeScreen()` when `VR_MenuInWorld()`. Photographed at the
+desk first: the menu stays legible without it, because the main menu items are
+opaque plaques rather than bare text.
 
-### 3. Pause without leaving VR
+If a headset disagrees, a partial fade needs an alpha argument threaded through
+`refexport_t` to `RDraw_FadeScreen` in gl1, gl3 and soft. Only gl1 and soft
+ship, but the struct is shared by all three.
 
-PC Options -> `pause without leaving vr` (`vr_menu_in_world`, default 0).
-Keeps the world in its projection layer while an in-game menu is open. Four
-sites all ask one function, `VR_MenuInWorld()` in `vr_surface.c`:
+### What A does not cover
 
-- `useScreenLayer()` no longer collapses the world to a flat quad for this case.
-- `CL_PredictMovement` (`cl_prediction.c`) no longer freezes the view when
-  paused. `cl.viewangles` was always live - `CL_RefreshCmd` runs regardless of
-  pause - but the prediction that copies it into `cl.predicted_angles`, which is
-  what the renderer reads, bailed out.
-- `CL_AddViewWeapon` hides the viewmodel while paused, because Team Beef update
-  the weapon pose only in the gameplay half of `HandleInput_Default` and it
-  would otherwise ride along welded to the face.
-- `SCR_GetStereoHudOffsetScaled` gives the per-eye offset in this case.
+- `R_RenderFrame` at `menu.c:5251`, the spinning player model on Multiplayer ->
+  Player Setup. An x shift would move the viewport and not the model in it.
+- `M_Popup()` + `R_EndFrame()` at `menu.c:1421` and `:3526` - the sound-restart
+  and server-search messages force a buffer swap from inside a key handler,
+  outside the bracket. Already hostile to a stereo path before this change.
 
-Gated on `TBXR_IsRunning()`, so flatscreen is untouched whatever the cvar says.
+### How it was verified without a headset
 
-**Owner reported after testing:** it does stay in stereo, the head does move the
-view, and the menu follows the gaze as expected.
+`TBXR_IsRunning()` is false with no headset, so `VR_MenuInWorld()` cannot be
+true and a flatscreen run is a no-regression test. Driven with a generated
+config - `map base1`, 200 `wait`s, `menu_main`, `screenshot`, `quit` - run as
+`+exec dbgshot.cfg`.
 
-## Open defects, from the owner's headset session
+- A temporary forced offset of +40px moved the plaque, the logo, the cursor, all
+  five menu items and the highlight, and moved neither the world nor the HUD.
+  That is the proof that nothing bypasses the choke point.
+- A temporary `Com_Printf` probe read the offset each frame: 0 with the menu up,
+  the HUD's own +-507 during play.
+- Flatscreen is unchanged, measured: the menu band differs from the pre-change
+  build by at most 24 out of 765, where a 1px shift of the same image gives 163.
+- The fade still fires flatscreen: world luminance 3.74 against 18.73 unfaded.
 
-All three are from the pause-in-world feature, reported 2026-09-03. Diagnosed
-but **not fixed**.
+## What a headset session should check
 
-### A. The pause menu is double vision — the real one
+In `E:\Games\Quake II VR`, launched **without** `+set vr_weapon_tune 1`:
 
-`src/client/menu/menu.c` contains **zero** calls to `SCR_GetStereoHudOffset`.
-It never needed one: menus always went to the flat screen layer, where both eyes
-see one quad. Now the menu draws into both eye buffers at identical screen
-coordinates, so the eyes disagree and it will not fuse.
+```
+"E:\Games\Quake II VR\yquake2.exe" -portable +set vr_menu_in_world 1
+```
 
-The fix is to offset menu drawing per eye. The primitives are `M_DrawCharacter`
-(`menu.c:420`), `M_DrawPic` (`:452`) and `M_DrawCursor` (`:466`), but there are
-also direct `Draw_PicScaled` / `Draw_CharScaled` calls scattered through -
-`:112` (banner), `:662`-`:676` (main menu), `:948` (cursor). Note `M_Draw()` is
-called with no arguments (`cl_screen.c:2514`), so `separation` is not threaded
-in; it needs either a parameter or a module-level offset set before the call.
-Match what the HUD already does rather than inventing a second scheme.
+1. **Does the pause menu fuse?** Open a menu in game. It should read as one
+   menu at a comfortable distance, not two overlapping copies.
+2. **Is 3.5m the right distance for it?** This is the judgement call. If it
+   feels too far or too near, say which - `SCR_GetStereoMenuOffset` is one
+   expression.
+3. **Is the world bright enough, and the menu still readable over it?**
+4. Then the three things from the previous handoff that have still never run in
+   a headset, below.
 
-### B. The background dims too much
+## Still open
 
-`menu.c:5408` calls `Draw_FadeScreen()` over the whole framebuffer. Correct when
-that framebuffer is a flat panel; in world it dims the entire world. Skip it, or
-lighten it substantially, when `VR_MenuInWorld()`.
-
-### C. The tuner readout is always on screen
-
-**Not a bug.** The launch command handed to the owner included
-`+set vr_weapon_tune 1`, so it was on from spawn in every game. Relaunch without
-it, or turn it off in PC Options. Worth considering whether it should refuse to
-draw in `baseq2`, where nothing needs tuning.
-
-## Still open from before this session
-
-- **The headset session has not happened yet** for the mission-pack work from
-  2026-08-28. In particular the **game select page and `relaunchgame`** have
-  never run in a headset - session teardown and rebuild in a new process is the
-  single riskiest untested thing in the project.
+- **The game select page and `relaunchgame` have never run in a headset.**
+  Session teardown and rebuild in a new process is the single riskiest untested
+  thing in the project. From 2026-08-28.
 - **Six weapons need tuning by eye**: Ionripper and Phalanx (The Reckoning);
   Disruptor, ETF Rifle, Plasma Beam, Chainfist (Ground Zero). The Prox Launcher
   does **not** - `v_plaunch` is `v_launch` reskinned (same 208 verts, 384 tris,
@@ -128,6 +108,19 @@ draw in `baseq2`, where nothing needs tuning.
   Launcher's tuned value. Team Beef's offsets cannot be derived from geometry -
   7 of their 11 sit at the engine default and the variation is almost all in the
   left/right term. Do not try to fit a model to them again.
+- **The weapon alignment tuner's stick input has never been exercised.** Nothing
+  has ever moved that stick. If it does nothing in the headset,
+  `q2xr_WeaponTuneInput` in `src/vr/vr_surface.c` is where to look.
+- **The Plasma Beam fix is unconfirmed.** The beam should lie exactly along the
+  laser sight line; they share an origin and a recoiled aim now, so a divergence
+  is a real bug.
+- **Tier two, if wanted:** making the paused menu hang stationary in the world
+  rather than following the gaze needs it rendered into its **own alpha
+  swapchain** on a quad layer beside the projection layer. `layers[]` in
+  `vr_surface.c` is already an array with a `layerCount`, and
+  `q2xrScreenLayerPose` is already a world-locked pose in `StageSpace` at
+  `vr_screen_depth`. What is missing is rendering only `M_Draw()` into a
+  separate transparent target. Defect A was the prerequisite and is done.
 - **Not published.** There is no `origin` remote, only `upstream` yquake2. The
   Quake port shipped to github.com/GameOrDie007/Quake-PCVR on 2026-08-29; this
   one never did.
@@ -149,29 +142,30 @@ Together these mean **a menu page can never show a gun tracking your hand**,
 which is why the tuner draws in the game instead. Neither shows on a Quest,
 where there is no desktop and every menu is a flat panel by design.
 
-## Tier two, if wanted
+## Traps that cost time
 
-Making the paused menu hang stationary in the world rather than following the
-gaze needs the menu rendered into its **own alpha swapchain** and hung on a quad
-layer beside the projection layer. The machinery is already there: `layers[]` in
-`vr_surface.c` is an array with a `layerCount`, and `q2xrScreenLayerPose` is
-already a world-locked pose in `StageSpace` at `vr_screen_depth`. What is
-missing is rendering only `M_Draw()` into a separate transparent target. Fixing
-defect A first is a prerequisite either way.
+**Running the game from the build tree leaves a hung `yquake2.exe` behind on
+every `quit`.** It releases its file handles but never exits, and
+`Stop-Process -Force` will not shift it. The next link then fails with
+`cannot open output file release\yquake2.exe: Permission denied`. Rename the exe
+out of the way and link again - Windows will rename a running image quite
+happily. Four accumulated over four runs this session; they have to be closed by
+hand.
 
-## A trap that cost time this session
-
-**Screenshot comparison cannot prove flatscreen is unchanged here.** Two runs
-with identical command lines are byte-identical, which makes the method look
-sound - but passing `0` versus `0.0` for the same cvar produces different
+**Screenshot comparison cannot prove flatscreen is unchanged by equality.** Two
+runs with identical command lines are byte-identical, which makes the method
+look sound - but passing `0` versus `0.0` for the same cvar produces different
 images, because the command-line string shifts the animation phase by a frame.
-A pixel diff between two runs proves nothing. Instrument with a `Com_Printf`
-probe and read the value instead. See [[vr-port-dump-the-buffer]] and
-[[vr-port-verify-before-asking]] in the owner's memory.
+Compare with a threshold and a sensitivity control (shift the same image by one
+pixel and measure that), or instrument with a `Com_Printf` probe and read the
+value. See [[vr-port-dump-the-buffer]] and [[vr-port-verify-before-asking]] in
+the owner's memory.
 
-Also: **the Bash tool's heredocs eat backslashes**, which corrupted a `\n` into
-a literal newline inside a C string literal twice this session. Write patch
-scripts with the Write tool, not a heredoc.
+**The Bash tool's heredocs eat backslashes**, which corrupted a `\n` into a
+literal newline inside a C string literal twice in the previous session. Write
+patch scripts with the Write tool, not a heredoc. The Bash tool's working
+directory also persists across calls and drifts after a `cd`, which silently
+turned one `ninja -C build-mingw` into a no-op; use absolute paths.
 
 ## How to resume
 
