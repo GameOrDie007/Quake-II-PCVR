@@ -27,6 +27,7 @@
 
 #include "header/client.h"
 #include "input/header/input.h"
+#include "../vr/vr_surface.h"
 
 void CL_ForwardToServer_f(void);
 void CL_Changing_f(void);
@@ -948,6 +949,18 @@ CL_Shutdown(void)
 
 	S_Shutdown();
 	IN_Shutdown();
+
+	/*
+	 * Before VID_Shutdown, because the swapchain images the runtime handed us
+	 * are textures in the GL context that VID_Shutdown is about to destroy.
+	 *
+	 * Nothing called this at all until now, so every VR quit left the session
+	 * and the instance alive. The process exited but was never reaped - it
+	 * showed as gone in Task Manager while still holding its own exe open, so
+	 * the next build could not link and the next install could not be copied.
+	 */
+	TBXR_ShutdownOpenXR();
+
 	VID_Shutdown();
 }
 

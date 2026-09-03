@@ -1486,10 +1486,73 @@ q2xr_InitSession(void)
 	return true;
 }
 
+static void q2xr_ProcessEvents(void);
+
+/*
+ * Bring a running session down before anything is destroyed.
+ *
+ * xrDestroySession on a *running* session returns XR_ERROR_SESSION_RUNNING and
+ * destroys nothing, so the session and instance outlive the process. The
+ * runtime keeps its handle on the client, the process is never reaped, and its
+ * image stays mapped - which is why a quit left a yquake2.exe behind that
+ * Task Manager would not show and that locked the exe against the next build.
+ *
+ * The sequence the spec asks for is xrRequestExitSession, then wait for the
+ * runtime to drive the session through STOPPING - which q2xr_ProcessEvents
+ * already turns into xrEndSession - and only then destroy.
+ */
+static void
+q2xr_EndSessionAndWait(void)
+{
+	int spins;
+
+	if (gApp.Instance == XR_NULL_HANDLE || gApp.Session == XR_NULL_HANDLE)
+	{
+		return;
+	}
+
+	if (gApp.SessionRunning)
+	{
+		XrResult result = xrRequestExitSession(gApp.Session);
+
+		if (XR_FAILED(result))
+		{
+			/* Not fatal: a session that is not running is already where this
+			 * wants it, and any other failure still leaves the destroy below
+			 * to try. */
+			q2xr_CheckXr(result, "xrRequestExitSession", __LINE__);
+		}
+	}
+
+	/*
+	 * Bounded. A runtime that never answers must not hang the quit - that would
+	 * trade a stray process for a hung one, which is worse. Two seconds is far
+	 * longer than any runtime needs and is not noticeable on the way out.
+	 */
+	for (spins = 0; gApp.SessionRunning && spins < 200; ++spins)
+	{
+		q2xr_ProcessEvents();
+
+		if (!gApp.SessionRunning)
+		{
+			break;
+		}
+
+		Sys_Nanosleep(10 * 1000 * 1000);
+	}
+
+	if (gApp.SessionRunning)
+	{
+		Com_Printf("VR: session did not stop in time; shutting down anyway\n");
+	}
+}
+
 static void
 q2xr_DestroyOpenXR(void)
 {
 	int hand, eye;
+
+	q2xr_EndSessionAndWait();
 
 	for (hand = 0; hand < NUM_EYES; ++hand)
 	{
