@@ -1350,12 +1350,33 @@ SCR_DrawItemWheel (float separation)
         int curw, curh;
         int vidwc = (viddef.width/2);
         int vidhc = (viddef.height/2);
+        /*
+         * The whole wheel was drawn at a scale of 1, in the pixels of Team
+         * Beef's own eye buffer - the ring, the cursor, the icons, the item
+         * name and the ammo count. Everything else in this file lays out
+         * against SCR_GetMenuScale(), and on a PC eye buffer that is around
+         * five, so the wheel came out a fraction of the size of the UI around
+         * it. It is the same seam as the status bar's xh: their constants are
+         * right on their hardware and only their hardware.
+         *
+         * Scaling it here keeps their proportions exactly - every size and
+         * every offset takes the same factor - and at scale 1 the arithmetic
+         * is byte-for-byte theirs.
+         */
+        float wheelScale = SCR_GetMenuScale();
         Draw_GetPicSize(&ringw, &ringh,"/wheel/ring.png");
-        Draw_PicScaled((vidwc - (ringw/2)) + offset_stereo, (vidhc - (ringh/2)), "/wheel/ring.png", 1.0f);
+        Draw_PicScaled((vidwc - (ringw * wheelScale / 2)) + offset_stereo,
+                       (vidhc - (ringh * wheelScale / 2)), "/wheel/ring.png", wheelScale);
         Draw_GetPicSize(&curw, &curh,"/wheel/cursor.png");
-        Draw_PicScaled((vidwc - (curw/2)) + ((polarCursor[0] * cosf(polarCursor[1])) * cursorFactor) + offset_stereo,
-                       (vidwc - (curh/2)) + ((polarCursor[0] * sinf(polarCursor[1])) * cursorFactor),
-                       "/wheel/cursor.png", 1.0f);
+        /*
+         * The second argument is the y centre and read vidwc - the *width*
+         * centre - which is theirs and is invisible on a Quest, where the eye
+         * buffer is square enough for the two to agree. This one is 3379x3590,
+         * so it put the cursor a hundred pixels above where the ring is.
+         */
+        Draw_PicScaled((vidwc - (curw * wheelScale / 2)) + ((polarCursor[0] * cosf(polarCursor[1])) * cursorFactor * wheelScale) + offset_stereo,
+                       (vidhc - (curh * wheelScale / 2)) + ((polarCursor[0] * sinf(polarCursor[1])) * cursorFactor * wheelScale),
+                       "/wheel/cursor.png", wheelScale);
 
         for(int i = 0; i < totalIcons; i++)
         {
@@ -1376,32 +1397,33 @@ SCR_DrawItemWheel (float separation)
                     // the icon stereo-incorrect.
                     iconFactor = 3.0f;
                     int offset_stereo_selected = SCR_GetStereoHudOffsetScaled(separation, 0.9f);
-                    DrawStringScaled(vidwc + offset_stereo - (strlen(iconlist[i].command) * 4),
-                                     vidhc - 100,
-                                     iconlist[i].command, 1.0f); // Item name
+                    DrawStringScaled(vidwc + offset_stereo - (strlen(iconlist[i].command) * 4 * wheelScale),
+                                     vidhc - (100 * wheelScale),
+                                     iconlist[i].command, wheelScale); // Item name
                     sprintf(iconName, "/wheel/%s_selected.png", iconlist[i].name); // selected icon path
-                    Draw_PicScaled(vidwc + iconlist[i].x - (iconWidth * iconFactor) + offset_stereo_selected,
-                                   vidhc + iconlist[i].y - (iconWidth * iconFactor), iconName,
-                                   iconFactor);
+                    Draw_PicScaled(vidwc + (iconlist[i].x - (iconWidth * iconFactor)) * wheelScale + offset_stereo_selected,
+                                   vidhc + (iconlist[i].y - (iconWidth * iconFactor)) * wheelScale, iconName,
+                                   iconFactor * wheelScale);
                     if(iconlist[i].ammo) {
                         sprintf(ammoAmount, "%i", cl.inventory[iconlist[i].ammo_i]);
-                        DrawNumberCenteredImageScaled(vidwc + offset_stereo, vidhc + 100,
+                        DrawNumberCenteredImageScaled(vidwc + offset_stereo,
+                                                      vidhc + (100 * wheelScale),
                                                       ammoAmount,
-                                                      1.0f); // ammo amount in image numbers
+                                                      wheelScale); // ammo amount in image numbers
                         sprintf(ammoName, "/wheel/a_%s.png", iconlist[i].ammo); // ammo icon path
-                        Draw_PicScaled(vidwc - (iconWidth * ammoFactor) +
+                        Draw_PicScaled(vidwc - (iconWidth * ammoFactor * wheelScale) +
                                        offset_stereo, // ammo icon for the weapon
-                                       vidhc - (iconWidth * ammoFactor), ammoName,
-                                       ammoFactor);
+                                       vidhc - (iconWidth * ammoFactor * wheelScale), ammoName,
+                                       ammoFactor * wheelScale);
                     }
                 }
                 else
                 {
                     iconFactor = 1.5f;
                     sprintf(iconName, "/wheel/%s.png", iconlist[i].name);
-                    Draw_PicScaled(vidwc + iconlist[i].x - (iconWidth * iconFactor) + (offset_stereo),
-                                   vidhc + iconlist[i].y - (iconWidth * iconFactor), iconName,
-                                   iconFactor);
+                    Draw_PicScaled(vidwc + (iconlist[i].x - (iconWidth * iconFactor)) * wheelScale + (offset_stereo),
+                                   vidhc + (iconlist[i].y - (iconWidth * iconFactor)) * wheelScale, iconName,
+                                   iconFactor * wheelScale);
                 }
             }
         }
