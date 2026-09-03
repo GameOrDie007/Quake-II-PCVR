@@ -1198,9 +1198,33 @@ static void
 EnableSmoothTurn(void *unused)
 {
     int old_cursor = s_options_menu.cursor;
+    int smooth = s_options_enable_smoothturn.curvalue;
+    float turn = Cvar_VariableValue("vr_snapturn_angle");
 
-    Cvar_SetValue("vr_smoothturn",
-                  (float)s_options_enable_smoothturn.curvalue);
+    Cvar_SetValue("vr_smoothturn", (float)smooth);
+
+    /*
+     * This flag only picks which control the page shows; vr_snapturn_angle is
+     * what the engine actually turns by, and its magnitude is what selects the
+     * mode (see vr_surface.h). So switching the flag without moving the value
+     * left the page showing a Turn Speed slider over a 45-degree snap angle:
+     * the slider pinned itself to the far left, because 11 - 45 clamps to 1,
+     * and backing out of the menu still snap-turned. The mirror of it was there
+     * too - switch smooth turning off with a speed of 7 saved and the Turn
+     * Angle box read "30 degrees" while the engine kept turning continuously.
+     *
+     * Only coerce a value that belongs to the other mode. A value already in
+     * range is one the player chose on this page, and toggling the flag twice
+     * must not quietly discard it.
+     */
+    if (smooth && turn > VR_TURN_SNAP_THRESHOLD)
+    {
+        Cvar_SetValue("vr_snapturn_angle", VR_TURN_SMOOTH_DEFAULT);
+    }
+    else if (!smooth && turn <= VR_TURN_SNAP_THRESHOLD)
+    {
+        Cvar_SetValue("vr_snapturn_angle", VR_TURN_SNAP_DEFAULT);
+    }
 
     Options_MenuInit();
 
@@ -1275,9 +1299,18 @@ ControlsSetMenuItemValues(void)
     s_options_crosshair_box.curvalue = ClampCvar(0, 3, crosshair->value);
     s_options_haptic_slider.curvalue = Cvar_VariableValue("joy_haptic_magnitude") * 10.0F;
     s_options_enable_item_wheels.curvalue = (int)vr_use_wheels->value;
-    s_options_enable_smoothturn.curvalue = (int)vr_smoothturn->value;
     s_options_enable_cheats.curvalue = (int)Cvar_Get("cheats", "0", CVAR_ARCHIVE)->value;
     float turn = Cvar_VariableValue("vr_snapturn_angle");
+
+    /*
+     * Ask the value the engine actually turns by, not the stored flag - the
+     * same reasoning as the snap-turn correction in VrInputDefault.c. A config
+     * written before this page kept the two in step can hold vr_smoothturn 1
+     * beside a 45-degree snap angle, and trusting the flag there shows a Turn
+     * Speed slider for turning that is demonstrably snapping. Derived, the page
+     * always describes what will actually happen.
+     */
+    s_options_enable_smoothturn.curvalue = (turn > VR_TURN_SNAP_THRESHOLD) ? 0 : 1;
     if (s_options_enable_smoothturn.curvalue == 0)
     {
         if (turn == 30.0f)
@@ -1291,7 +1324,7 @@ ControlsSetMenuItemValues(void)
         else if (turn == 90.0f)
             s_options_snapturn_angle_box.curvalue = 4;
         else
-            s_options_snapturn_angle_box.curvalue = 0;
+            s_options_snapturn_angle_box.curvalue = 1; /* 45, the default */
     }
     else
     {
