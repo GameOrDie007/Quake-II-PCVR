@@ -78,6 +78,9 @@ headset or not started.
   Everything measurable has been measured; what it *looks* like has not.
 - **HUD spacing** (`d72929a5`). The overlap is gone, but the spacing has only
   been judged at the desk.
+- **Turning, both modes** (`6081ec0f`). Snap: does the gun still flick aside for
+  a frame? Smooth: does it still hang in the air? Try both, and say which
+  turning setting was on.
 - **The game select page and `relaunchgame` have never run in a headset.**
   Tearing an OpenXR session down and rebuilding it in a new process is the single
   riskiest untested thing in the project. Outstanding since 2026-08-28.
@@ -86,42 +89,39 @@ headset or not started.
 not do it: no server connection, and `SCR_FinishCinematic` works by writing
 `nextserver` into the netchan. Dismissing it still goes through the menu.
 
-### Diagnosed, not measured — and this is a desk job
+### Weapon lag on turning — measured; one fix landed, one hypothesis killed
 
-**2. Snap turn throws the weapon to one side for a frame.** "The controller stays
-on one side of the screen for a split second and then appears in its proper
-place." The correction for exactly this is **already in the tree** —
-`VrInputDefault.c`, `snapTurnAtEntry` and the block at the end, gated on
-`vr_smoothturn == 0`, ported from the older `Quake2VR` repo (`172f4c52`,
-`8ea41967`, `0eaa4955` there). So either it is not firing, or it is not enough.
+**The one-frame staleness is real and is now quantified.** `tools/turn-probe.py`
+finally ran (Virtual Desktop was up). It drives `snapTurn` at a fixed rate per
+frame with the headset parked, and logs the body yaw the weapon is built from
+against the yaw the view is about to have. The error is constant at a given rate
+and moves with rate: **+1.80 degrees at 1 deg/frame, −0.18 at 3.** Solving the
+two gives `err = 2.79 − 0.99 * rate`, so the rate-dependent term is **0.99
+frames** — one frame, to measurement noise. `cl.refdef.viewangles` is written
+while rendering the previous frame; `hmdorientation` is updated this frame.
 
-**3. Smooth turn leaves the weapon behind entirely.** "If you hold the turn the
-gun stays in place, where you can 360 degree turn and you'll spin past the gun
-that's just in the air." Not a one-frame lag. The older repo's `0eaa4955`
-deliberately disabled the snap correction under smooth turn, calling Team Beef's
-untouched behaviour correct for it; this says otherwise. RazeXR hit the same
-family (`3185cc073`): the weapon placed from the player actor's yaw while the
-scene is drawn from the view's.
+**2. Snap turn — fixed, needs the headset (`6081ec0f`).** The correction was
+there and arithmetically right, but gated on `vr_smoothturn` — which is ours,
+not Team Beef's, and is only the Options page's *display* flag, choosing whether
+that page shows a snap-angle box or a speed slider. The engine decides how it
+turns from `vr_snapturn_angle`: over 10 degrees snaps, at or under it is
+continuous. The two agree only while turning is changed exclusively through that
+page, so the gate worked by coincidence. The gate now asks the same question the
+turning code asks twenty lines above it.
 
-**Where both have got to.** The weapon's yaw is
-`cl.refdef.viewangles[YAW] - hmdorientation[YAW]` (`VrInputDefault.c:195, 203`).
-`cl.refdef.viewangles` is `cl.predicted_angles` (`cl_entities.c:931`), which
-`CL_PredictMovement` fills by replaying the command queue — so it carries the
-last command actually *sent*, not the current head pose. `snapTurn` reaches
-`cl.viewangles` via `VR_GetMove` and `CL_AdjustAngles`. Lag anywhere on that
-chain shows as the weapon trailing the view. **This is a chain, not a conclusion.
-It has not been measured.**
+**3. Smooth turn — the standing explanation is disproved. Do not spend another
+evening on that chain.** Under continuous turning at default settings one frame
+is about **0.2 degrees**, three orders of magnitude short of a weapon left
+hanging while the player spins past it. It is not accumulated prediction lag.
 
-**How to measure it, with no controller:** a harness driving `snapTurn` by a
-fixed amount per frame reproduces a held stick, and logging
-
-    want = snapTurn
-    have = cl.refdef.viewangles[YAW] - hmdorientation[YAW]
-
-each frame gives the angular error directly. `tools/turn-probe.py` was written
-for this and applies and reverts itself. It has never run — Virtual Desktop was
-down, so no session existed and `HandleInput_Default` never ran. **Ask for
-Virtual Desktop to be left running and this needs nothing from him.**
+**Try this before investigating further:** the gate fix may simply be it. If his
+`vr_smoothturn` and `vr_snapturn_angle` had drifted apart, the correction was
+firing every frame through a continuous turn — and a previous session recorded
+that doing exactly that "made the weapon fight the view instead, leaving it
+hanging in place through a continuous turn", which is his report word for word.
+So: **test both turn modes on `6081ec0f` before theorising.** If it persists, get
+the value of `vr_snapturn_angle` at the moment it happens, and check whether
+`vr_weapon_stabilised` is stuck on.
 
 ### Back burner, by his own call
 
