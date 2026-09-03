@@ -571,6 +571,18 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	 * instead, leaving it hanging in place through a continuous turn. The
 	 * artifact this fixes is specifically the single-frame jump of a snap.
 	 *
+	 * Which mode is running is decided by vr_snapturn_angle, above: over 10
+	 * degrees is a snap, at or under it is continuous. This used to test
+	 * vr_smoothturn instead, which is ours rather than Team Beef's and is only
+	 * the Options page's display flag - it decides which control that page
+	 * shows, not how the engine turns. The two agree as long as turning is only
+	 * ever changed through that page, so the gate worked by coincidence rather
+	 * than by construction, and anything that set one without the other put the
+	 * correction into the wrong mode: cancelling a snap that never happened
+	 * through a continuous turn, which is the weapon hanging in the air, or
+	 * leaving a real snap uncancelled, which is the weapon thrown aside for a
+	 * frame. Asking the same question the turning code asks cannot drift.
+	 *
 	 * The delta is measured strictly within this call - snapTurn on entry
 	 * against snapTurn once the joystick handling has finished - so it is the
 	 * amount the view is about to rotate that the weapon has not accounted for.
@@ -584,7 +596,7 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	 * untouched the delta is exactly zero and their tuned placement is
 	 * arithmetically unchanged.
 	 */
-	if (vr_smoothturn->value == 0.0f)
+	if (vr_snapturn_angle->value > 10.0f)
 	{
 		float delta = snapTurn - snapTurnAtEntry;
 
