@@ -1357,3 +1357,53 @@ every `quit`** - it releases its file handles but never exits, and
 `cannot open output file release\yquake2.exe: Permission denied`. Renaming the
 exe out of the way lets the link proceed; Windows is happy to rename a running
 image. Four of them accumulated over four runs this session.
+
+## C. PAUSED and centerprints were at the wrong depth
+
+Reported from the headset on 2026-09-03, after A and B were in: the menu itself
+fused, but the **PAUSED** sign under it did not.
+
+It was not unfused - it was fused at the wrong distance. `SCR_DrawPause` has
+always taken `SCR_GetStereoHudOffset`, which places it at `vr_hud_depth`, half a
+metre away. With the menu now at `vr_screen_depth`, three and a half metres out,
+the eyes converge on the menu and the sign half a metre away doubles. Each was
+individually correct; they simply cannot both be looked at.
+
+`SCR_GetStereoOverlayOffset` returns the menu's offset when `VR_MenuInWorld()`
+and the HUD's otherwise, and both centre-screen overlays now use it:
+`SCR_DrawPause` and `SCR_DrawCenterString`. The centerprint was not reported -
+it is the same defect one line away, and a level hint can easily still be on
+screen when a menu opens.
+
+The HUD proper stays at `vr_hud_depth`. It is peripheral furniture, it has
+always sat there, and it is not competing for the same convergence as the menu.
+
+**Verified without a headset.** `VR_MenuInWorld()` cannot be true with no
+headset, so the helper falls through to exactly the call the old code made and
+flatscreen is unchanged by construction. Measured as well: cross-correlating the
+PAUSED strip against the previous build's screenshot gives a sharp symmetric
+minimum at **+0 px** (mean abs difference 0.10 at zero shift against 0.38 at one
+pixel either way).
+
+That measurement took two attempts. The first "PAUSED band" was chosen from
+arithmetic on `viddef` and actually landed on the top of the menu, three hundred
+pixels away - it reported a comfortable-looking max difference of 21 for a region
+that did not contain the thing being tested. Cropping the region and **looking at
+it** found the real one. See [[vr-port-dump-the-buffer]].
+
+## Still gaze-locked
+
+The owner's other observation: the paused menu follows the head. That is
+expected - it is 2D drawn into the eye buffers, so it is welded to the view. It
+is the tier-two item, and there are two ways to fix it, of very different sizes:
+
+- **Its own quad layer.** `layers[]` in `vr_surface.c` is already an array with a
+  `layerCount`, and `q2xrScreenLayerPose` is already a world-locked pose in
+  `StageSpace` at `vr_screen_depth`. What is missing is rendering only `M_Draw()`
+  into a separate alpha swapchain. Correct at any head angle.
+- **A 2D counter-shift.** Record the view angles when the menu opens and offset
+  the menu's screen position by the angular delta each frame, through the same
+  `Draw_SetStereoOffset` choke point plus a y term. Small, reuses proven
+  plumbing, and testable at the desk with a forced angle - but it is a
+  translation, not a rotation, so the panel does not keystone and it degrades at
+  large angles.

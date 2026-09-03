@@ -423,6 +423,7 @@ SCR_CenterPrint(char *str)
 /* defined further down; forward-declared so the HUD/centerprint draws above can converge for VR */
 static int SCR_GetStereoHudOffsetScaled(float separation, float depthScale);
 static int SCR_GetStereoHudOffset(float separation);
+static int SCR_GetStereoOverlayOffset(float separation);
 
 void
 SCR_DrawCenterString(float separation)
@@ -437,8 +438,9 @@ SCR_DrawCenterString(float separation)
     const int char_unscaled_height = 8;
 	/* centerprints (e.g. level hint messages like "crouch here") must be shifted
 	 * per-eye like the rest of the HUD, otherwise they're not stereo-converged and
-	 * are unreadable in VR. */
-	int offset_stereo = SCR_GetStereoHudOffset(separation);
+	 * are unreadable in VR. One can still be on screen when a menu opens, so they
+	 * follow the menu's plane when there is one. */
+	int offset_stereo = SCR_GetStereoOverlayOffset(separation);
 
 	/* the finale prints the characters one at a time */
 	remaining = 9999;
@@ -885,7 +887,7 @@ SCR_DrawPause(float separation)
 {
 	int w, h;
 	float scale = SCR_GetMenuScale();
-	int offset_stereo = SCR_GetStereoHudOffset(separation);
+	int offset_stereo = SCR_GetStereoOverlayOffset(separation);
 
 	if (!scr_showpause->value) /* turn off for screenshots */
 	{
@@ -1090,6 +1092,26 @@ SCR_GetStereoMenuOffset(float separation)
 	}
 
 	return SCR_GetStereoHudOffsetScaled(separation, screen_depth / hud_depth);
+}
+
+/*
+ * Per-eye offset for the centre-screen overlays that share the menu's plane.
+ * PAUSED and centerprints are drawn over the middle of the screen, which is
+ * exactly where an in-world menu is. Left at the HUD's depth they fuse half a
+ * metre away while the eyes are converged on a menu three and a half metres
+ * out, and the reader sees double - each is individually correct, but they
+ * cannot both be looked at. With no menu in the world they are HUD furniture
+ * and take the HUD's depth, as they always have.
+ */
+static int
+SCR_GetStereoOverlayOffset(float separation)
+{
+	if (VR_MenuInWorld())
+	{
+		return SCR_GetStereoMenuOffset(separation);
+	}
+
+	return SCR_GetStereoHudOffset(separation);
 }
 
 void
