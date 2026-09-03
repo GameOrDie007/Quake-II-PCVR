@@ -78,9 +78,9 @@ headset or not started.
   Everything measurable has been measured; what it *looks* like has not.
 - **HUD spacing** (`d72929a5`). The overlap is gone, but the spacing has only
   been judged at the desk.
-- **Turning, both modes** (`6081ec0f`). Snap: does the gun still flick aside for
-  a frame? Smooth: does it still hang in the air? Try both, and say which
-  turning setting was on.
+- **Snap turn still flicks** (`6081ec0f` fixed smooth, not snap). The question
+  to ask is under "Weapon lag on turning" below — head still against head
+  turning. Do not spend a build before that answer.
 - **The game select page and `relaunchgame` have never run in a headset.**
   Tearing an OpenXR session down and rebuilding it in a new process is the single
   riskiest untested thing in the project. Outstanding since 2026-08-28.
@@ -89,39 +89,65 @@ headset or not started.
 not do it: no server connection, and `SCR_FinishCinematic` works by writing
 `nextserver` into the netchan. Dismissing it still goes through the menu.
 
-### Weapon lag on turning — measured; one fix landed, one hypothesis killed
+### Weapon lag on turning — smooth fixed, snap narrowed to head motion
 
-**The one-frame staleness is real and is now quantified.** `tools/turn-probe.py`
-finally ran (Virtual Desktop was up). It drives `snapTurn` at a fixed rate per
-frame with the headset parked, and logs the body yaw the weapon is built from
-against the yaw the view is about to have. The error is constant at a given rate
-and moves with rate: **+1.80 degrees at 1 deg/frame, −0.18 at 3.** Solving the
-two gives `err = 2.79 − 0.99 * rate`, so the rate-dependent term is **0.99
-frames** — one frame, to measurement noise. `cl.refdef.viewangles` is written
-while rendering the previous frame; `hmdorientation` is updated this frame.
+**3. Smooth turn: FIXED, confirmed in the headset.** `6081ec0f`. The correction
+was gated on `vr_smoothturn`, which is ours rather than Team Beef's and is only
+the Options page's *display* flag — it chooses whether that page shows a
+snap-angle box or a speed slider. The engine decides how it turns from
+`vr_snapturn_angle`: over 10 degrees snaps, at or under it is continuous. The two
+agree only while turning is changed exclusively through that page, so the gate
+was working by coincidence. Firing the correction through a continuous turn is
+what left the weapon hanging in the air. **Do not re-gate this on a display
+flag.**
 
-**2. Snap turn — fixed, needs the headset (`6081ec0f`).** The correction was
-there and arithmetically right, but gated on `vr_smoothturn` — which is ours,
-not Team Beef's, and is only the Options page's *display* flag, choosing whether
-that page shows a snap-angle box or a speed slider. The engine decides how it
-turns from `vr_snapturn_angle`: over 10 degrees snaps, at or under it is
-continuous. The two agree only while turning is changed exclusively through that
-page, so the gate worked by coincidence. The gate now asks the same question the
-turning code asks twenty lines above it.
+**2. Snap turn: still happens, and it is not the arithmetic.** He reports it is
+intermittent, mostly turning left but also right.
 
-**3. Smooth turn — the standing explanation is disproved. Do not spend another
-evening on that chain.** Under continuous turning at default settings one frame
-is about **0.2 degrees**, three orders of magnitude short of a weapon left
-hanging while the player spins past it. It is not accumulated prediction lag.
+Measured with `tools/snap-probe.py`, which forces the turn stick hard over for a
+single frame so the *real* snap code runs — latch, wrap, correction and all — and
+logs every frame. With the map settled and **the headset parked so the head yaw
+is constant**, the correction is exact in both directions:
 
-**Try this before investigating further:** the gate fix may simply be it. If his
-`vr_smoothturn` and `vr_snapturn_angle` had drifted apart, the correction was
-firing every frame through a continuous turn — and a previous session recorded
-that doing exactly that "made the weapon fight the view instead, leaving it
-hanging in place through a continuous turn", which is his report word for word.
-So: **test both turn modes on `6081ec0f` before theorising.** If it persists, get
-the value of `vr_snapturn_angle` at the moment it happens, and check whether
-`vr_weapon_stabilised` is stuck on.
+    f180  place 174.88  snap 45.00  corr +45.00   ->  gun 219.88
+    f181  place 219.87  snap 45.00  corr   0.00       view body yaw 219.87
+
+No flick, no residual, no direction bias. So the basic arithmetic is right and
+the remaining fault is something a parked headset cannot reproduce.
+
+**The one candidate left, and it is arithmetic rather than a guess.** The weapon
+is placed from `cl.refdef.viewangles[YAW] - hmdorientation[YAW]`, but those two
+are sampled an entire frame apart: `cl.refdef.viewangles` was written while
+rendering the *previous* frame, `hmdorientation` was updated at the top of *this*
+one. Since `cl.refdef.viewangles` is itself approximately `hmd + snapTurn`, the
+term expands to
+
+    place = snapTurn(N-1) - (hmd(N) - hmd(N-1))
+
+so **the weapon's body yaw carries the head's yaw change over one frame, always,
+whether or not a turn is happening.** With the head still that term is zero,
+which is exactly why the desk measurement is clean. At 90Hz a brisk head turn is
+a couple of degrees per frame; on the frame of a snap that error rides on top of
+the snap, and since people tend to turn their head the same way they snap, it
+would be both intermittent and direction-biased. That matches his report.
+
+**Ask him this before building anything** — it is a 30-second observation and it
+decides the question outright:
+
+> Snap turn repeatedly while holding your head deliberately still, then snap turn
+> again while turning your head the same way. Does the flick only show up in the
+> second case?
+
+If yes, the fix is to sample both halves at the same instant — cache
+`hmdorientation[YAW]` where `cl.refdef.viewangles` is computed in
+`CL_CalcViewValues` and use that cached value for the weapon rather than the live
+one. That is a second divergence inside Team Beef's `VrInputDefault.c`, so it
+wants to be a deliberate decision rather than a drive-by.
+
+If no — it flicks with the head still too — then it is something the desk harness
+does not reproduce at all, and the next thing to vary is frame pacing: the
+harness forces the stick for one frame, while a real thumbstick is held across
+many.
 
 ### Back burner, by his own call
 
