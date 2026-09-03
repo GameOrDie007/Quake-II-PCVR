@@ -23,9 +23,10 @@ picture.
 
 ## What landed this session
 
-Defects A and B from the previous handoff, both fixed, both desk-verified,
-neither headset-verified. Everything is still behind `vr_menu_in_world`, which
-defaults to 0.
+Defects A and B from the previous handoff, then C, which the headset found once
+A and B were in. All three fixed and desk-verified; A and B are headset-verified
+and C is not. Everything is still behind `vr_menu_in_world`, which defaults
+to 0.
 
 ### A. The pause menu now has a per-eye offset
 
@@ -55,6 +56,18 @@ If a headset disagrees, a partial fade needs an alpha argument threaded through
 `refexport_t` to `RDraw_FadeScreen` in gl1, gl3 and soft. Only gl1 and soft
 ship, but the struct is shared by all three.
 
+### C. PAUSED and centerprints follow the menu's plane
+
+Reported from the headset after A and B were in. `PAUSED` was not unfused - it
+was fused at `vr_hud_depth` (0.5m) while the eyes were converged on the menu at
+`vr_screen_depth` (3.5m), so it doubled. `SCR_GetStereoOverlayOffset` returns
+the menu's offset when `VR_MenuInWorld()` and the HUD's otherwise;
+`SCR_DrawPause` and `SCR_DrawCenterString` both use it. The centerprint was not
+reported - same defect one line away, and a level hint can still be on screen
+when a menu opens.
+
+The HUD proper deliberately stays at `vr_hud_depth`.
+
 ### What A does not cover
 
 - `R_RenderFrame` at `menu.c:5251`, the spinning player model on Multiplayer ->
@@ -79,22 +92,24 @@ config - `map base1`, 200 `wait`s, `menu_main`, `screenshot`, `quit` - run as
   build by at most 24 out of 765, where a 1px shift of the same image gives 163.
 - The fade still fires flatscreen: world luminance 3.74 against 18.73 unfaded.
 
-## What a headset session should check
+## What the headset has already said
 
-In `E:\Games\Quake II VR`, launched **without** `+set vr_weapon_tune 1`:
+Tested 2026-09-03 in `E:\Games\Quake II VR`. `vr_menu_in_world` is
+`CVAR_ARCHIVE` and is already `1` in his `baseq2/config.cfg`, so the ordinary
+launcher enables it; `vr_weapon_tune` is registered with no archive flag and
+cannot persist, which is the whole of defect C from the previous handoff.
 
-```
-"E:\Games\Quake II VR\yquake2.exe" -portable +set vr_menu_in_world 1
-```
+- **The menu fuses.** A is fixed.
+- **3.5m is the right distance** - "nice and big and easy to read".
+- **The world is bright and the menus are readable.** B is fixed.
+- **PAUSED did not fuse** - fixed above, not yet re-tested.
+- **The menu is attached to his gaze.** Still open; see below.
 
-1. **Does the pause menu fuse?** Open a menu in game. It should read as one
-   menu at a comfortable distance, not two overlapping copies.
-2. **Is 3.5m the right distance for it?** This is the judgement call. If it
-   feels too far or too near, say which - `SCR_GetStereoMenuOffset` is one
-   expression.
-3. **Is the world bright enough, and the menu still readable over it?**
-4. Then the three things from the previous handoff that have still never run in
-   a headset, below.
+## What a headset session should check next
+
+1. **Does PAUSED sit with the menu now?** Pause in game with the menu open. The
+   sign should sit in the menu's plane, not float nearer.
+2. Then the things that have still never run in a headset, below.
 
 ## Still open
 
@@ -114,13 +129,19 @@ In `E:\Games\Quake II VR`, launched **without** `+set vr_weapon_tune 1`:
 - **The Plasma Beam fix is unconfirmed.** The beam should lie exactly along the
   laser sight line; they share an origin and a recoiled aim now, so a divergence
   is a real bug.
-- **Tier two, if wanted:** making the paused menu hang stationary in the world
-  rather than following the gaze needs it rendered into its **own alpha
-  swapchain** on a quad layer beside the projection layer. `layers[]` in
-  `vr_surface.c` is already an array with a `layerCount`, and
-  `q2xrScreenLayerPose` is already a world-locked pose in `StageSpace` at
-  `vr_screen_depth`. What is missing is rendering only `M_Draw()` into a
-  separate transparent target. Defect A was the prerequisite and is done.
+- **The menu is gaze-locked**, which the owner noticed and which is expected:
+  it is 2D drawn into the eye buffers, so it is welded to the view. Two ways to
+  fix it, of very different sizes, and **he has not yet said which he wants**:
+  - *Its own quad layer.* `layers[]` in `vr_surface.c` is already an array with a
+    `layerCount`, and `q2xrScreenLayerPose` is already a world-locked pose in
+    `StageSpace` at `vr_screen_depth`. What is missing is rendering only
+    `M_Draw()` into a separate alpha swapchain. Correct at any head angle.
+    Defect A was the prerequisite and is done.
+  - *A 2D counter-shift.* Record the view angles when the menu opens and offset
+    the menu by the angular delta each frame, through the same
+    `Draw_SetStereoOffset` choke point plus a y term. Small, reuses proven
+    plumbing, desk-testable with a forced angle - but a translation, not a
+    rotation, so no keystone and it degrades at large head angles.
 - **Not published.** There is no `origin` remote, only `upstream` yquake2. The
   Quake port shipped to github.com/GameOrDie007/Quake-PCVR on 2026-08-29; this
   one never did.
