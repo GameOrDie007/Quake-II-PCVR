@@ -2072,8 +2072,21 @@ SCR_ExecuteLayoutString(char *s,float separation)
 
 		if (!strcmp(token, "yv"))
 		{
+			/*
+			 * The - scale*120 is stock's; Team Beef dropped it here and in the
+			 * client and ctf blocks below. A yv layout is authored inside a
+			 * 240-unit-tall box meant to sit centred on the screen, so without
+			 * the term the box starts at the vertical centre and can only grow
+			 * downward. The help computer spans yv 8 to yv 172, which at the
+			 * PC scale of about 4.5 put it across the entire lower half of the
+			 * eye buffer, too low to read.
+			 *
+			 * Same seam as xh above: the constant only holds together at their
+			 * resolution. Restoring the term costs them nothing that was ever
+			 * right - a 240-tall layout goes where it was authored to go.
+			 */
 			token = COM_Parse(&s);
-			y = viddef.height / 2 + scale*(int)strtol(token, (char **)NULL, 10);
+			y = viddef.height / 2 - scale*120 + scale*(int)strtol(token, (char **)NULL, 10);
 			continue;
 		}
 
@@ -2110,10 +2123,16 @@ SCR_ExecuteLayoutString(char *s,float separation)
 			/* draw a deathmatch client block */
 			int score, ping, time;
 
+			/*
+			 * Centred on the same 240-tall box as yv, and for the same reason.
+			 * It has to move with yv rather than separately: the scoreboard's
+			 * dogtag is a "yv" picn drawn at the row's own y (hud.c), so if the
+			 * two anchors disagree the tag detaches from its row.
+			 */
 			token = COM_Parse(&s);
 			x = viddef.width / 2 - scale*160 + scale*(int)strtol(token, (char **)NULL, 10);
 			token = COM_Parse(&s);
-			y = viddef.height / 2 + scale*(int)strtol(token, (char **)NULL, 10);
+			y = viddef.height / 2 - scale*120 + scale*(int)strtol(token, (char **)NULL, 10);
 			SCR_AddDirtyPoint(x, y);
 			SCR_AddDirtyPoint(x + scale*159, y + scale*31);
 
@@ -2157,10 +2176,11 @@ SCR_ExecuteLayoutString(char *s,float separation)
 			int score, ping;
 			char block[80];
 
+			/* the same 240-tall box again - see yv */
 			token = COM_Parse(&s);
 			x = viddef.width / 2 - scale*160 + scale*(int)strtol(token, (char **)NULL, 10);
 			token = COM_Parse(&s);
-			y = viddef.height / 2 + scale*(int)strtol(token, (char **)NULL, 10);
+			y = viddef.height / 2 - scale*120 + scale*(int)strtol(token, (char **)NULL, 10);
 			SCR_AddDirtyPoint(x, y);
 			SCR_AddDirtyPoint(x + scale*159, y + scale*31);
 
