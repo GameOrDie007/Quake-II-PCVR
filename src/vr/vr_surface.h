@@ -35,6 +35,14 @@ void TBXR_GetEyeResolution(int *width, int *height);
 void TBXR_FrameSetup(void);
 
 qboolean TBXR_IsRunning(void);
+
+/* True while an in-game menu is being shown without dropping out of VR: the
+ * world keeps its projection layer, the head keeps moving the view, and the
+ * menu draws as a stereo overlay instead of the whole scene collapsing onto a
+ * flat quad. Off unless vr_menu_in_world says otherwise, which keeps Team
+ * Beef's behaviour the default. Several places have to agree about this, so
+ * they all ask here rather than each testing key_dest for themselves. */
+qboolean VR_MenuInWorld(void);
 void TBXR_ShutdownOpenXR(void);
 
 #endif /* VR_SURFACE_H */

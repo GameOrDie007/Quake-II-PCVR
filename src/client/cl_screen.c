@@ -28,6 +28,7 @@
 #include <stdbool.h>
 #include "header/client.h"
 #include "../vr/teambeef/VrCvars.h"
+#include "../vr/vr_surface.h"
 
 float scr_con_current; /* aproaches scr_conlines at scr_conspeed */
 float scr_conlines; /* 0.0 to 1.0 lines of console to display */
@@ -599,6 +600,238 @@ SCR_Sky_f(void)
 	R_SetSky(Cmd_Argv(1), rotate, axis);
 }
 
+/* ------------------------------------------------------------------------
+ * Weapon alignment
+ *
+ * The weapons the mission packs add are not Team Beef's - they never shipped
+ * those games - so their tuned vr_weapon_adjustment values do not exist for
+ * them and the engine's single hardcoded default stands in for all of them.
+ * Only an eye in a headset can settle where a gun sits in a hand, and this is
+ * what makes that a few minutes rather than a rebuild per nudge.
+ *
+ * It draws in-game rather than as a menu page on purpose. Opening a menu moves
+ * cls.key_dest away from key_game, and Team Beef's design keys two things off
+ * that: useScreenLayer() collapses both eyes onto one flat quad, and the weapon
+ * placement in HandleInput_Default stops being updated. In a menu the gun is
+ * therefore a flat picture that no longer tracks the hand, which is precisely
+ * what has to be judged here. Drawn as a HUD layer the world stays stereo and
+ * the weapon stays live in the hand.
+ * ------------------------------------------------------------------------ */
+
+cvar_t *vr_weapon_tune;
+cvar_t *vr_menu_in_world;
+
+#define TUNE_ROWS 6
+
+/* Team Beef's own words, from the header of the autoexec.cfg these values live
+ * in: "backwards, left, up, pitch (down), yaw, roll". Worth copying rather than
+ * improving on - the first axis reads as forward if you only look at the code,
+ * and a label that points the opposite way to the file being edited would cost
+ * more than it saves. */
+static const char *scr_tune_labels[TUNE_ROWS] = {
+	"backwards", "left", "up", "pitch (down)", "yaw", "roll"
+};
+
+static int scr_tune_row = 0;
+
+/* The cvar the weapon in hand reads, or NULL when there is no weapon. Keyed on
+ * weapmodel, which the game sets from its own WEAP_ number - so one index means
+ * different guns in different games, which is why each pack has its own
+ * autoexec.cfg. */
+static cvar_t *
+SCR_WeaponTuneCvar(int *number)
+{
+	int weapmodel = cl.frame.playerstate.weapmodel;
+
+	if (number)
+	{
+		*number = weapmodel;
+	}
+
+	if (weapmodel == 0)
+	{
+		return NULL;
+	}
+
+	return Cvar_Get(va("vr_weapon_adjustment_%i", weapmodel),
+			"10.0,7.0,-8.0,-3.0,0.0,0.0", CVAR_ARCHIVE);
+}
+
+static void
+SCR_WeaponTuneParse(cvar_t *adj, float *out)
+{
+	int i;
+
+	for (i = 0; i < TUNE_ROWS; i++)
+	{
+		out[i] = 0.0f;
+	}
+
+	sscanf(adj->string, "%f,%f,%f,%f,%f,%f",
+			&out[0], &out[1], &out[2], &out[3], &out[4], &out[5]);
+}
+
+/* Move the selection by rows, and the selected value by delta. Driven from the
+ * VR input seam, which owns the off hand's stick while this is switched on. */
+void
+SCR_WeaponTuneAdjust(int rows, float delta)
+{
+	cvar_t *adj;
+	float v[TUNE_ROWS];
+
+	if (rows)
+	{
+		scr_tune_row = (scr_tune_row + rows + TUNE_ROWS) % TUNE_ROWS;
+	}
+
+	if (delta == 0.0f)
+	{
+		return;
+	}
+
+	adj = SCR_WeaponTuneCvar(NULL);
+
+	if (adj == NULL)
+	{
+		return;
+	}
+
+	SCR_WeaponTuneParse(adj, v);
+	v[scr_tune_row] += delta;
+
+	Cvar_Set(adj->name, va("%.1f,%.1f,%.1f,%.1f,%.1f,%.1f",
+			v[0], v[1], v[2], v[3], v[4], v[5]));
+}
+
+void
+SCR_DrawWeaponTune(float separation)
+{
+	float scale;
+	int offset_stereo;
+	int number = 0;
+	int i, x, y;
+	cvar_t *adj;
+	float v[TUNE_ROWS];
+	const char *model;
+	char name[32];
+
+	if (vr_weapon_tune == NULL || !vr_weapon_tune->value)
+	{
+		return;
+	}
+
+	scale = SCR_GetMenuScale();
+	offset_stereo = SCR_GetStereoHudOffset(separation);
+	x = (viddef.width / 2) - (int)(scale * 100) + offset_stereo;
+	y = (int)(viddef.height * 0.28f);
+
+	adj = SCR_WeaponTuneCvar(&number);
+
+	if (adj == NULL)
+	{
+		DrawStringScaled(x, y, "weapon alignment: nothing in hand", scale);
+		return;
+	}
+
+	SCR_WeaponTuneParse(adj, v);
+
+	/* The viewmodel names the weapon without the client needing a table of the
+	 * running game's WEAP_ numbers, which it has no way to know. */
+	model = cl.configstrings[CS_MODELS + cl.frame.playerstate.gunindex];
+
+	if (!strncmp(model, "models/weapons/", 15))
+	{
+		model += 15;
+	}
+
+	Q_strlcpy(name, model, sizeof(name));
+
+	{
+		char *slash = strchr(name, '/');
+
+		if (slash)
+		{
+			*slash = 0;
+		}
+	}
+
+	DrawStringScaled(x, y, va("weapon alignment  %i  %s", number, name), scale);
+	y += (int)(scale * 16);
+
+	for (i = 0; i < TUNE_ROWS; i++)
+	{
+		DrawStringScaled(x, y, va("%s %-13s %7.1f",
+				(i == scr_tune_row) ? ">" : " ", scr_tune_labels[i], v[i]), scale);
+		y += (int)(scale * 8);
+	}
+
+	y += (int)(scale * 8);
+	DrawStringScaled(x, y, "stick: pick row, change value", scale);
+	y += (int)(scale * 8);
+	DrawStringScaled(x, y, "grip: finer steps", scale);
+	y += (int)(scale * 8);
+	DrawStringScaled(x, y, "console: vrweapon save", scale);
+}
+
+/* Write the tuned values to the running gamedir's weapons.cfg.
+ *
+ * A file of its own, rather than lines spliced into autoexec.cfg, because Setup
+ * rewrites autoexec.cfg on every run - it has to, being the only thing that
+ * knows which games are installed - and would otherwise destroy tuning that can
+ * only be done by eye in a headset. autoexec.cfg exec's this last, so what is
+ * written here wins over the table in it.
+ *
+ * Every line is printed as well, so a console log carries the result even when
+ * the file cannot be written. */
+static void
+SCR_WeaponTuneSave_f(void)
+{
+	char path[MAX_OSPATH];
+	int i, written = 0;
+	FILE *out;
+
+	Com_Printf("\n");
+
+	Com_sprintf(path, sizeof(path), "%s/weapons.cfg", FS_Gamedir());
+	out = Q_fopen(path, "wb");
+
+	if (out != NULL)
+	{
+		fprintf(out, "// Weapon offsets tuned in the headset.\r\n");
+		fprintf(out, "// Values are:  backwards, left, up, pitch (down), yaw, roll\r\n");
+		fprintf(out, "//\r\n");
+		fprintf(out, "// Written by 'vrweapon save'. Setup does not touch this file.\r\n\r\n");
+	}
+
+	for (i = 1; i <= 16; i++)
+	{
+		cvar_t *adj = Cvar_Get(va("vr_weapon_adjustment_%i", i), "", 0);
+
+		if (!adj->string[0])
+		{
+			continue;
+		}
+
+		Com_Printf("set vr_weapon_adjustment_%i \"%s\"\n", i, adj->string);
+
+		if (out != NULL)
+		{
+			fprintf(out, "set vr_weapon_adjustment_%i \"%s\"\r\n", i, adj->string);
+			written++;
+		}
+	}
+
+	if (out == NULL)
+	{
+		Com_Printf("\nCould not write %s - the lines above are the result.\n", path);
+		return;
+	}
+
+	fclose(out);
+
+	Com_Printf("\nWrote %i weapon alignments to %s\n", written, path);
+}
+
 void
 SCR_Init(void)
 {
@@ -618,11 +851,14 @@ SCR_Init(void)
 	r_consolescale = Cvar_Get("r_consolescale", "-1", CVAR_ARCHIVE);
 	r_menuscale = Cvar_Get("r_menuscale", "-1", CVAR_ARCHIVE);
 	vr_hud_height = Cvar_Get("vr_hud_height", "0", CVAR_ARCHIVE);
+	vr_weapon_tune = Cvar_Get("vr_weapon_tune", "0", 0);
+	vr_menu_in_world = Cvar_Get("vr_menu_in_world", "0", CVAR_ARCHIVE);
 
 	/* register our commands */
 	Cmd_AddCommand("timerefresh", SCR_TimeRefresh_f);
 	Cmd_AddCommand("loading", SCR_Loading_f);
 	Cmd_AddCommand("vrwheel", SCR_ItemTable_f);
+	Cmd_AddCommand("vrweapon", SCR_WeaponTuneSave_f);
 	Cmd_AddCommand("sizeup", SCR_SizeUp_f);
 	Cmd_AddCommand("sizedown", SCR_SizeDown_f);
 	Cmd_AddCommand("sky", SCR_Sky_f);
@@ -775,10 +1011,11 @@ SCR_GetStereoHudOffsetScaled(float separation, float depthScale)
 	 * is rendered once and shown to both eyes on a quad - a per-eye offset would just
 	 * push the HUD off-centre with no convergence benefit. This mirrors useScreenLayer()
 	 * in Q2VR_SurfaceView.c; keep the two in sync. */
-	if ((cls.state != ca_connected && cls.state != ca_active) ||
-		cls.key_dest != key_game ||
-		cl.attractloop ||
-		cl.cinematictime != 0)
+	if (!VR_MenuInWorld() &&
+		((cls.state != ca_connected && cls.state != ca_active) ||
+		 cls.key_dest != key_game ||
+		 cl.attractloop ||
+		 cl.cinematictime != 0))
 	{
 		return 0;
 	}
@@ -2257,6 +2494,8 @@ void SCR_UpdateForEye (int eye)
 			}
 
             SCR_DrawItemWheel(separation);
+
+            SCR_DrawWeaponTune(separation);
 
 			SCR_DrawNet(separation);
 			SCR_CheckDrawCenterString(separation);

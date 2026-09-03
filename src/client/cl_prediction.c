@@ -26,6 +26,7 @@
  */
 
 #include "header/client.h"
+#include "../vr/vr_surface.h"
 
 void
 CL_CheckPredictionError(void)
@@ -240,6 +241,28 @@ CL_PredictMovement(void)
 
 	if (cl_paused->value)
 	{
+		/*
+		 * Paused normally means the view is frozen too, which is right on a
+		 * monitor and wrong in a headset - a view that stops answering the head
+		 * is the one thing VR must never do, pause or no pause.
+		 *
+		 * cl.viewangles is still live here: CL_RefreshCmd runs whether or not
+		 * the game is paused, so VR_GetMove keeps feeding the head's
+		 * orientation into it. Only the prediction that copies it into
+		 * cl.predicted_angles, which is what the renderer reads, stops. So do
+		 * exactly what the no-prediction path below does and no more - angles
+		 * follow the head, while position stays put because the server is not
+		 * running and nothing should be moving.
+		 */
+		if (VR_MenuInWorld())
+		{
+			for (i = 0; i < 3; i++)
+			{
+				cl.predicted_angles[i] = cl.viewangles[i] + SHORT2ANGLE(
+						cl.frame.playerstate.pmove.delta_angles[i]);
+			}
+		}
+
 		return;
 	}
 

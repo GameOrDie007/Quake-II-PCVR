@@ -27,6 +27,7 @@
 #include <math.h>
 #include "header/client.h"
 #include "../vr/teambeef/mathlib.h"
+#include "../vr/vr_surface.h"
 
 extern struct model_s *cl_mod_powerscreen;
 
@@ -758,6 +759,20 @@ CL_AddViewWeapon(player_state_t *ps, player_state_t *ops)
 
 	/* allow the gun to be completely removed */
 	if (!cl_gun->value)
+	{
+		return;
+	}
+
+	/*
+	 * Team Beef update the weapon's pose in the gameplay half of
+	 * HandleInput_Default, so it stops being updated the moment a menu opens.
+	 * That never showed on a flat quad. With the world still live behind an
+	 * in-world menu it would: weaponoffset is frozen while the view origin
+	 * still follows the head, so the gun would ride along welded to the face.
+	 * Hiding it is honest - the game is paused - and leaves their input code
+	 * alone.
+	 */
+	if (VR_MenuInWorld())
 	{
 		return;
 	}

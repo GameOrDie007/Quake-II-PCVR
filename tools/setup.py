@@ -33,14 +33,22 @@ QUAKE2_GUESSES = [
     "C:/Program Files (x86)/Quake II",
 ]
 
-# gamedir, name, the WEAP_ numbers this game adds and what they are
+# The Prox Launcher is a reskinned Grenade Launcher, so Team Beef's tuned value
+# for the launcher is right for it and does not need an eye. Measured, not
+# assumed: models/weapons/v_plaunch and v_launch have the same 208 vertices, 384
+# triangles and 66 frames, the same frame names, and byte-identical vertex data
+# in all 66 of them. The same model in the hand wants the same offset.
+PROX_OFFSET = "10.0,5.0,-8.0,-3.0,0.0,0.0"   # = WEAP_GRENADELAUNCHER
+
+# gamedir, name, and the WEAP_ numbers this game adds - each with the offset to
+# write for it, or None where only an eye in a headset can settle it
 EXPANSIONS = [
     ("xatrix", "The Reckoning",
-     [(12, "WEAP_PHALANX"), (13, "WEAP_BOOMER - the Ionripper")]),
+     [(12, "WEAP_PHALANX", None), (13, "WEAP_BOOMER - the Ionripper", None)]),
     ("rogue", "Ground Zero",
-     [(12, "WEAP_DISRUPTOR"), (13, "WEAP_ETFRIFLE"),
-      (14, "WEAP_PLASMA - the Plasma Beam"),
-      (15, "WEAP_PROXLAUNCH"), (16, "WEAP_CHAINFIST")]),
+     [(12, "WEAP_DISRUPTOR", None), (13, "WEAP_ETFRIFLE", None),
+      (14, "WEAP_PLASMA - the Plasma Beam", None),
+      (15, "WEAP_PROXLAUNCH", PROX_OFFSET), (16, "WEAP_CHAINFIST", None)]),
 ]
 
 # Team Beef's, tuned against their HD viewmodels. Both expansions keep Quake
@@ -146,17 +154,51 @@ def write_autoexec(path, title, extra):
     if extra:
         lines += [
             "",
-            "// %s's own weapons. These are not Team Beef's numbers -" % title,
-            "// they never shipped this game - so they start at the engine's",
-            "// default and want tuning by eye in the headset.",
+            "// %s's own weapons. Team Beef never shipped this game, so" % title,
+            "// these start at the engine's default and want tuning by eye in",
+            "// the headset - except where the model is one Quake II already",
+            "// has, and their tuned value for it carries over.",
         ]
 
-        for number, name in extra:
+        for number, name, value in extra:
             lines.append("//" + name)
-            lines.append('set vr_weapon_adjustment_%d "%s"' % (number, DEFAULT_OFFSET))
+            lines.append('set vr_weapon_adjustment_%d "%s"'
+                         % (number, value or DEFAULT_OFFSET))
+
+    lines += [
+        "",
+        "// Anything tuned in the headset is written to weapons.cfg by",
+        "// 'vrweapon save'. It is exec'd last so it wins, and Setup never",
+        "// writes over it - this file is rewritten every run, that one is not.",
+        "exec weapons.cfg",
+    ]
 
     with open(path, "w", newline="\r\n") as handle:
         handle.write("\n".join(lines) + "\n")
+
+
+def write_weapons_stub(path):
+    """Create weapons.cfg if it is not there, and never touch it if it is.
+
+    autoexec.cfg exec's this last, so whatever the headset tuning wrote here
+    overrides the table above it. Keeping the two in separate files is what lets
+    Setup stay free to rewrite its own on every run - which it must, because it
+    is the only thing that knows which game is installed - without destroying
+    work that can only be done by eye in a headset.
+    """
+    if os.path.exists(path):
+        return
+
+    with open(path, "w", newline="\r\n") as handle:
+        handle.write("\n".join([
+            "// Weapon offsets tuned in the headset.",
+            "//",
+            "// Turn 'weapon alignment' on in PC Options, adjust with the off",
+            "// hand's stick, then type 'vrweapon save' at the console. This",
+            "// file is rewritten by that and by nothing else - Setup leaves it",
+            "// alone, so re-running Setup cannot undo any of it.",
+            "",
+        ]) + "\n")
 
 
 def write_default_config(path):
@@ -241,6 +283,7 @@ def install_expansions(quake2, dest):
         copy_tree(os.path.join(quake2, gamedir, "video"),
                   os.path.join(target, "video"))
         write_autoexec(os.path.join(target, "autoexec.cfg"), title, extra)
+        write_weapons_stub(os.path.join(target, "weapons.cfg"))
         write_default_config(os.path.join(target, "config.cfg"))
 
         launcher = os.path.join(dest, "Play %s VR.bat" % title)
@@ -305,6 +348,7 @@ def main():
     installed = install_expansions(quake2, dest)
 
     write_autoexec(os.path.join(dest, "baseq2", "autoexec.cfg"), "Quake II", None)
+    write_weapons_stub(os.path.join(dest, "baseq2", "weapons.cfg"))
     write_default_config(os.path.join(dest, "baseq2", "config.cfg"))
 
     with open(os.path.join(dest, "Play Quake II VR.bat"), "w", newline="") as handle:

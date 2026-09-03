@@ -1132,6 +1132,8 @@ static menulist_s s_pcoptions_msaa_box;
 static menulist_s s_pcoptions_farsee_box;
 static menuslider_s s_pcoptions_hud_slider;
 static menulist_s s_pcoptions_mirror_box;
+static menulist_s s_pcoptions_tune_box;
+static menulist_s s_pcoptions_inworld_box;
 static menulist_s s_pcoptions_action;
 static menuseparator_s s_pcoptions_note1;
 static menuseparator_s s_pcoptions_note2;
@@ -1805,6 +1807,27 @@ MirrorFunc(void *unused)
     Cvar_SetValue("vr_mirror", (float)s_pcoptions_mirror_box.curvalue);
 }
 
+/*
+ * Weapon alignment is switched on here but drawn in the game, not on this page.
+ * A menu moves cls.key_dest off key_game, and Team Beef key two things off that:
+ * useScreenLayer() puts both eyes on one flat quad, and HandleInput_Default
+ * stops updating the weapon placement. On a menu page the gun would therefore be
+ * a flat picture that no longer follows the hand, which is the one thing that
+ * has to be judged while adjusting it. So this is the switch, and the readout
+ * with the off hand's stick on it appears once you leave the menu.
+ */
+static void
+WeaponTuneFunc(void *unused)
+{
+    Cvar_SetValue("vr_weapon_tune", (float)s_pcoptions_tune_box.curvalue);
+}
+
+static void
+MenuInWorldFunc(void *unused)
+{
+    Cvar_SetValue("vr_menu_in_world", (float)s_pcoptions_inworld_box.curvalue);
+}
+
 static void
 PCOptions_MenuInit(void)
 {
@@ -1814,6 +1837,8 @@ PCOptions_MenuInit(void)
     cvar_t *farsee = Cvar_Get("r_farsee", "0", CVAR_ARCHIVE);
     cvar_t *hud = Cvar_Get("vr_hud_height", "0", CVAR_ARCHIVE);
     cvar_t *mirror = Cvar_Get("vr_mirror", "2", CVAR_ARCHIVE);
+    cvar_t *tune = Cvar_Get("vr_weapon_tune", "0", 0);
+    cvar_t *inworld = Cvar_Get("vr_menu_in_world", "0", CVAR_ARCHIVE);
     int y = 0;
 
     s_pcoptions_menu.x = viddef.width / 2;
@@ -1871,6 +1896,22 @@ PCOptions_MenuInit(void)
     s_pcoptions_mirror_box.itemnames = mirror_names;
     s_pcoptions_mirror_box.curvalue = (mirror->value < 0) ? 0 :
             ((mirror->value > 2) ? 2 : (int)mirror->value);
+
+    s_pcoptions_tune_box.generic.type = MTYPE_SPINCONTROL;
+    s_pcoptions_tune_box.generic.x = 0;
+    s_pcoptions_tune_box.generic.y = (y += 10);
+    s_pcoptions_tune_box.generic.name = "weapon alignment";
+    s_pcoptions_tune_box.generic.callback = WeaponTuneFunc;
+    s_pcoptions_tune_box.itemnames = pc_yesno_names;
+    s_pcoptions_tune_box.curvalue = (tune->value != 0);
+
+    s_pcoptions_inworld_box.generic.type = MTYPE_SPINCONTROL;
+    s_pcoptions_inworld_box.generic.x = 0;
+    s_pcoptions_inworld_box.generic.y = (y += 10);
+    s_pcoptions_inworld_box.generic.name = "pause without leaving vr";
+    s_pcoptions_inworld_box.generic.callback = MenuInWorldFunc;
+    s_pcoptions_inworld_box.itemnames = pc_yesno_names;
+    s_pcoptions_inworld_box.curvalue = (inworld->value != 0);
 
     /*
      * r_farsee is CVAR_LATCH, so Cvar_SetValue parks the new setting in
@@ -1932,6 +1973,8 @@ PCOptions_MenuInit(void)
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_farsee_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_hud_slider);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_mirror_box);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_tune_box);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_inworld_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note1);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note2);
 }
