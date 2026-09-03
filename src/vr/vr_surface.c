@@ -226,6 +226,7 @@ static qboolean q2xrInitialised = false;
 /* Defined below, beside useScreenLayer, because the two are the pair that
  * decide what the tuner can and cannot be. */
 static void q2xr_WeaponTuneInput(ovrInputStateTrackedRemote *offNew);
+static void q2xr_CinematicSkipInput(void);
 
 static qboolean q2xrInstanceReady = false;
 
@@ -1747,6 +1748,8 @@ TBXR_FrameSetup(void)
 	{
 		acquireTrackedRemotesData();
 
+		q2xr_CinematicSkipInput();
+
 		switch ((int)vr_control_scheme->value)
 		{
 			case RIGHT_HANDED_DEFAULT:
@@ -2081,6 +2084,67 @@ TBXR_FrameSetup(void)
 			fpsLast = global_time;
 		}
 	}
+}
+
+/*
+ * Skipping a cinematic, which nothing else can do any more.
+ *
+ * Two fixes ended up cancelling each other out. HandleInput_Default's menu
+ * branch was widened to cover cl.cinematictime > 0, so that every button
+ * becomes a key event during a movie - and the note beside it says losing
+ * gameplay input there costs nothing "because there is no gameplay to lose".
+ * That is the wrong assumption: the engine's own skip in CL_SendCmd reads
+ * cmd->buttons and cmd->upmove, and both of those are built by the gameplay
+ * branch that no longer runs. So during an in-game cutscene they are
+ * permanently zero and the skip can never fire.
+ *
+ * Reverting that widening is not available either, because cl.attractloop is
+ * read off the server (cl_parse.c) and is false during the startup movie, which
+ * therefore relies on the cinematictime clause to get key events at all.
+ *
+ * So the skip is made here instead, from the button state directly, doing
+ * exactly what CL_SendCmd would have done. It keeps that path's one-second
+ * guard, for the same reason: a button still held from before the cinematic
+ * began must not end it the moment it starts - which is the "plays for a second
+ * then cuts off" bug in another guise.
+ *
+ * Two things it does that the engine's version does not. It edge-triggers, so a
+ * held button is one skip and not one per frame; and it latches the cinematic it
+ * fired on, so a single press cannot send two nextservers and jump a level.
+ */
+static void
+q2xr_CinematicSkipInput(void)
+{
+	static int skippedAt = 0;
+	uint32_t pressed;
+
+	if ((cl.cinematictime <= 0) || cl.attractloop || (cls.state != ca_active))
+	{
+		return;
+	}
+
+	/* One skip per cinematic, however long the button is held. */
+	if (cl.cinematictime == skippedAt)
+	{
+		return;
+	}
+
+	if (cls.realtime - cl.cinematictime <= 1000)
+	{
+		return;
+	}
+
+	pressed = (rightTrackedRemoteState_new.Buttons & ~rightTrackedRemoteState_old.Buttons) |
+			(leftTrackedRemoteState_new.Buttons & ~leftTrackedRemoteState_old.Buttons);
+
+	if (pressed == 0)
+	{
+		return;
+	}
+
+	skippedAt = cl.cinematictime;
+	Com_DPrintf("Cinematic skipped from VR input, new buttons=%u\n", pressed);
+	SCR_FinishCinematic();
 }
 
 /*
