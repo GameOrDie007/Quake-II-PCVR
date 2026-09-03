@@ -54,51 +54,45 @@ Two limits and one trap:
   renders. That is also what a player gets launching with Virtual Desktop up and
   the headset asleep, so it is worth fixing on its own account.
 
+**Anything screen-space can be measured with no session at all.** `config.cfg`
+holds the eye buffer's size from the last VR run, so a plain launch comes up at
+3379x3590 (the log says `setting mode -1: 3379 3590`, and `VR: no OpenXR
+instance` when Virtual Desktop is not streaming). `screenshot` then writes the
+whole 3379x3590 buffer to `build-mingw/release/baseq2/scrnshot`. HUD placement,
+menu layout, UI scale and text size are all decided by those dimensions alone,
+so this measures them properly. Drive it with a throwaway
+`build-mingw/release/baseq2/probe.cfg` exec'd from the command line:
+
+```
+yquake2.exe -portable -datadir "E:\Games\Quake II VR" +exec probe.cfg
+```
+
+`map base1`, several hundred `wait` lines, `cmd help` or `cmd inven`, more
+waits, `screenshot`, `quit` — one `wait` is one frame, so shoot twice at
+different offsets rather than trying to time it exactly. That is how `7049bd3a`
+was verified against a rebuild of the previous binary. **Delete `probe.cfg` and
+the `.tga` files afterwards.** And *look* at the images: a row-brightness
+profile called three of the four shots empty, because the UI is dark green on
+dark grey and the panel was plainly there.
+
 ## In flight
 
 **Nothing is mid-edit.** The tree is clean; everything below is either awaiting a
 headset or not started.
 
-### The one open defect
+### No open defects
 
-**The X and Y overlays sit too low to read.** Holding X brings up the help
-computer (mission objectives) and Y the inventory; both land near the bottom of
-the view instead of around eye level. Reported 2026-09-03, not yet fixed.
-
-Diagnosed, and it is the same seam as the status bar's `xh` and the weapon
-wheel: **Team Beef deliberately removed the vertical centring term from `yv`.**
-
-    stock 7.41   y = viddef.height / 2 - scale * 120 + scale * value
-    theirs, ours y = viddef.height / 2               + scale * value
-
-A layout written with `yv` is authored inside a 240-unit-tall box meant to sit
-centred on the screen. Without the `- scale * 120` it starts at the vertical
-centre and only grows *downward*, which is tuned for their eye buffer and lands
-far lower on a 3590-tall one. The help computer is built at
-`src/game/player/hud.c:340` and spans `yv 8` to `yv 172`, so at scale 4.5 it
-covers centre+36 to centre+774 - the entire lower half of the view.
-
-The inventory has the same shape of problem in different code:
-`src/client/cl_inventory.c:159` anchors at `y = viddef.height / 2` and then grows
-down by `scale * 24`, `scale * 16` and `scale * 8` per row.
-
-**Two ways to fix it, and the choice matters:**
-
-1. **Restore stock's `- scale * 120`** in `yv` (`cl_screen.c:2073`) and centre the
-   inventory block on its own height. Principled - it puts a 240-tall layout
-   where it was authored to go - and it is a platform correctness fix of exactly
-   the kind `R_SetFrustum` and `xh` already are, so it belongs in both branches.
-   Check it does not move anything else that uses `yv`; the status bar uses `yb`
-   and should be untouched.
-2. **Lift them with a cvar**, the way `vr_hud_height` lifts the status bar. Safer
-   and adjustable in the headset, but it is a second knob for the same class of
-   problem the other two fixed properly.
-
-Prefer 1, verify by photograph at the eye buffer's aspect, and only reach for 2
-if 1 turns out to move something it should not.
+The X/Y overlay position is fixed in `7049bd3a` - see Done. It is photographed
+at the eye buffer's real size but has not been in a headset.
 
 ### Awaiting his headset
 
+- **The X and Y overlays** (`7049bd3a`). Photographed at 3379x3590 before and
+  after: both blocks used to sit entirely below the buffer's centre line and over
+  the status bar, and now straddle it, slightly high. What has *not* been
+  established is whether that angular size is comfortable to read in the headset.
+  If he wants them higher still, the honest lever is `vr_hud_height`'s equivalent
+  for `yv`, which does not exist yet - do not nudge the restored constant.
 - **The Plasma Beam** (`09b26186`). It should lie exactly along the laser sight
   line; they share an origin and a recoiled aim now, so a divergence is real.
   Never explicitly confirmed.
@@ -216,6 +210,7 @@ Newest first. `git show <hash>` for the reasoning; each message carries it.
 
 | commit | what |
 |---|---|
+| `7049bd3a` | X and Y overlays centred again; their per-frame inventory debug print gone |
 | `a505a003` | Face the right way in the demo, and let the stick look around it |
 | `f87be48a` | The weapon wheel gets the scale the rest of the UI has |
 | `2d4c9ea2` | The snap-turn correction moved the gun to the wrong place |
