@@ -44,6 +44,13 @@ qboolean TBXR_IsRunning(void);
  * they all ask here rather than each testing key_dest for themselves. */
 qboolean VR_MenuInWorld(void);
 
+/* The shared half of that test - the feature is on, a session is running, there
+ * is a world at ca_active, and no cinematic is playing - without asking what
+ * key_dest is. The attract demo qualifies: it is a real map being rendered, so
+ * it is also what says the demo may keep the projection layer and take its
+ * orientation from the head. */
+qboolean VR_InWorldEligible(void);
+
 /* True while the menu is being drawn onto a composition layer of its own rather
  * than into the eye buffers - vr_menu_in_world 2. That makes it stay where it
  * was put instead of riding the head, and makes it monoscopic: the compositor

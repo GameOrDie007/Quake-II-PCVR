@@ -941,6 +941,33 @@ CL_CalcViewValues(void)
 		}
 	}
 
+	/*
+	 * A demo shown in the world is a real map being rendered, not a film - but
+	 * its recorded angles own the view completely. Measured: pm_type is
+	 * PM_FREEZE (4), so the branch above takes the playerstate's angles, and
+	 * cl.viewangles sits untouched at 0 throughout while refdef tracks the
+	 * recording degree for degree.
+	 *
+	 * That is what makes the world ride the head. The scene is drawn facing
+	 * wherever the recording faces, then submitted on a projection layer posed
+	 * at the head, so the compositor shows it as though it had been drawn facing
+	 * where the head is - and the whole world turns with the player.
+	 *
+	 * So while the attract loop is in the world the head owns the orientation
+	 * and the recording keeps only the position: carried along its path, free to
+	 * look anywhere. That is both the point and the comfortable choice, since a
+	 * recording that turns the view for you is the usual way to make someone
+	 * ill. Pitch and roll come from the head for the same reason - an imposed
+	 * horizon is worse than an imposed yaw.
+	 *
+	 * Backing this out is one thing: put cl.attractloop back into
+	 * VR_InWorldEligible() and the demo returns to Team Beef's flat panel.
+	 */
+	if (cl.attractloop && VR_InWorldEligible())
+	{
+		VectorCopy(hmdorientation, cl.refdef.viewangles);
+	}
+
 	/* Do NOT apply weapon kick_angles to the view in VR - the headset must never be
 	 * rotated by recoil (nauseating, and it makes the gun appear not to recoil since it
 	 * moves with the view). kick_angles is still delivered in the player_state so the
