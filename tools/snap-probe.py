@@ -100,9 +100,9 @@ log = (
     "\n"
     "\tif (dbgOn)\n"
     "\t{\n"
-    "\t\tCom_Printf(\"DBGSNAP f%d place %8.2f snap %8.2f corr %8.2f view %8.2f hmd %8.2f gun %8.2f" + BS + "n\",\n"
+    "\t\tCom_Printf(\"DBGSNAP f%d place %8.2f snap %8.2f corr %8.2f wx %8.4f wz %8.4f gun %8.2f" + BS + "n\",\n"
     "\t\t\t\tdbgFrame, dbgPlace, snapTurn, dbgCorr,\n"
-    "\t\t\t\tcl.refdef.viewangles[YAW], hmdorientation[YAW], dbgPlace + dbgCorr);\n"
+    "\t\t\t\tweaponoffset[0], weaponoffset[2], dbgPlace + dbgCorr);\n"
     "\t}\n"
     "}"
 )

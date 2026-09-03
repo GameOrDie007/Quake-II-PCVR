@@ -607,7 +607,25 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 		{
 			vec2_t v;
 
-			rotateAboutOrigin(-weaponoffset[0], weaponoffset[2], delta, v);
+			/*
+			 * No leading minus here, unlike the placement call above, and that
+			 * asymmetry is the point. Write the placement as f(p) = R(theta).N.p,
+			 * where N negates x: applying f a second time with the correction
+			 * angle gives R(d).N.R(theta).N.p, and N.R(theta).N is R(-theta), so
+			 * the result is R(d-theta).p - not the R(theta+d).N.p that composing
+			 * the two rotations should give. The weapon landed in an unrelated
+			 * place for the one frame the correction fired, which is the gun
+			 * flicking to one side on a snap turn. Rotating the already-placed
+			 * offset by delta alone composes correctly: R(d).R(theta).N.p.
+			 *
+			 * Measured before and after with tools/snap-probe.py. Before, a
+			 * right snap put the offset at (0.6349, -0.3866) for one frame
+			 * against the (0.3866, -0.6349) it settles to - the components
+			 * swapped, about 0.35 units out. After, the snap frame reads
+			 * (0.3868, -0.6348) and the frame after it reads the same. Both
+			 * turn directions.
+			 */
+			rotateAboutOrigin(weaponoffset[0], weaponoffset[2], delta, v);
 			weaponoffset[0] = v[0];
 			weaponoffset[2] = v[1];
 			weaponangles[YAW] += delta;
