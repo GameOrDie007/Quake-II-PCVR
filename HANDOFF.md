@@ -146,6 +146,13 @@ and the place to look first.
 - **The release zip on disk is stale.** `E:\Games\Quake2VR-vr-741-base-0717e03a.zip`
   predates the ship-audit commit and is missing LICENSE. Rebuild with
   `tools/make-dist.py` from HEAD before handing anything out.
+- **Smooth turn advances per frame, not per second.** `HandleInput_Default` runs
+  once per VR frame and does `snapTurn -= (10 * stick.x) / vr_snapturn_angle`, so
+  the same Turn Speed setting turns 25% faster at 90Hz than at 72Hz. It is
+  Team Beef's arithmetic and he has tuned 7 to his taste at 90Hz, so it is left
+  alone - but changing the headset refresh rate will change his turn speed, and
+  that is the explanation if he ever reports it. Making it time-based would
+  change the feel at every existing setting.
 
 ## Traps in this repo
 
@@ -210,6 +217,7 @@ Newest first. `git show <hash>` for the reasoning; each message carries it.
 
 | commit | what |
 |---|---|
+| `ddc8bbe2` | Smooth turn by default; the Options page reads the value the engine turns by |
 | `7049bd3a` | X and Y overlays centred again; their per-frame inventory debug print gone |
 | `a505a003` | Face the right way in the demo, and let the stick look around it |
 | `f87be48a` | The weapon wheel gets the scale the rest of the UI has |
