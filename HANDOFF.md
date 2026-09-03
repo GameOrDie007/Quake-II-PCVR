@@ -25,9 +25,12 @@ picture.
 
 Defects A and B from the previous handoff; C, which the headset found once A and
 B were in; and D, the gaze-lock, which the owner asked to have fixed properly
-rather than cheaply. All four are desk-verified. A and B are headset-verified,
-C and D are not. Everything is still behind `vr_menu_in_world`, which defaults
-to 0.
+rather than cheaply. **All four are confirmed working in the headset.**
+Everything is still behind `vr_menu_in_world`, which defaults to 0.
+
+The same session turned up four new things, none of them to do with the menu -
+see "Found in the headset" below. One is fixed and untested; two are diagnosed
+but unmeasured; one is back burner.
 
 ### A. The pause menu now has a per-eye offset
 
@@ -139,29 +142,110 @@ Tested 2026-09-03 in `E:\Games\Quake II VR`. `vr_menu_in_world` is
 launcher enables it; `vr_weapon_tune` is registered with no archive flag and
 cannot persist, which is the whole of defect C from the previous handoff.
 
+First session:
+
 - **The menu fuses.** A is fixed.
 - **3.5m is the right distance** - "nice and big and easy to read".
 - **The world is bright and the menus are readable.** B is fixed.
-- **PAUSED did not fuse** - fixed above, not yet re-tested.
-- **The menu is attached to his gaze.** Still open; see below.
+- **PAUSED did not fuse.** Led to C.
+- **The menu is attached to his gaze.** Led to D.
+
+Second session, on the build with C and D in - **all four confirmed**:
+
+> "Everything works the way it should. Paused does not feel like it's just an
+> underlayer of the main menu, no double vision or anything. It follows gaze
+> when that is enabled, and when it's fixed in place, it's fixed in place."
+
+So A, B, C and D are done. What he found instead is four new things, below.
+
+## Found in the headset 2026-09-03, not yet fixed
+
+### 1. A does not skip the intro or the opening cutscene (fixed, untested)
+
+Only the trigger and B skipped them; A did nothing. `CL_SendCmd` in
+`cl_input.c` masks `BUTTON_ANY` in VR - added in an earlier session to stop a
+stuck key skipping things - and after that mask only the trigger still sets a
+bit in `cmd->buttons` at all. Team Beef route the face buttons through movement
+instead: B is `K_SPACE` bound to `+moveup`, A is a direct `+movedown` console
+command, and both land in `cmd->upmove`.
+
+Any deliberate input now skips, whichever route it takes:
+`(skipButtons != 0) || (cmd->upmove != 0)`. `upmove` is driven only by the
+in_up/in_down key states, never by head or room-scale movement, so it cannot
+fire on its own, and the existing one-second guard still applies.
+
+**Caveat worth knowing.** That account does not explain why **B worked for him
+and A did not** - by the code both are `upmove` and neither should have skipped.
+Something in the model is wrong. The fix covers every route rather than the one
+I think is at fault, so it should work either way, but if A still does nothing
+the model is where to look. `Com_DPrintf` there now prints `upmove` as well as
+`buttons`; `developer 1` will show it.
+
+### 2. Snap turn throws the weapon to one side for a frame
+
+"The controller stays on one side of the screen for a split second and then
+appears in its proper place."
+
+The correction for exactly this is **already in the tree** -
+`VrInputDefault.c`, `snapTurnAtEntry` at the top and the block at the end,
+gated on `vr_smoothturn == 0`. It was ported from the older `Quake2VR` repo
+(commits `172f4c52`, `8ea41967`, `0eaa4955` there). So either it is not firing,
+or it is not sufficient here.
+
+### 3. Smooth turn leaves the weapon behind entirely
+
+"If you hold the turn, either left or right, the gun stays in place, where you
+can 360 degree turn and you'll spin past the gun that's just in the air."
+
+That is not a one-frame lag, it is the weapon not following at all. Note the
+older repo's `0eaa4955` deliberately **disabled** the snap correction under
+smooth turn, calling Team Beef's untouched behaviour "correct for it". This
+report says it is not. RazeXR hit the same family - `3185cc073`, "the weapon was
+placed from the player actor's yaw while the scene is drawn from the view's, and
+those deliberately disagree while turning".
+
+**Where 2 and 3 have got to.** The weapon's yaw comes from
+`cl.refdef.viewangles[YAW] - hmdorientation[YAW]` (`VrInputDefault.c:195, 203`).
+`cl.refdef.viewangles` is `cl.predicted_angles` (`cl_entities.c:931`), which
+`CL_PredictMovement` fills by replaying the **command queue** - so it carries the
+last command actually sent, not the current head pose. `snapTurn` reaches
+`cl.viewangles` through `VR_GetMove` and `CL_AdjustAngles`. A lag anywhere along
+that chain shows up as the weapon trailing the view, which is what both reports
+describe. **This is a chain, not a conclusion - it has not been measured.**
+
+**How to measure it** - see the OpenXR note above; this needs no controller. A
+harness that drives `snapTurn` by a fixed amount per frame reproduces a held
+stick, and logging
+
+    want = snapTurn
+    have = cl.refdef.viewangles[YAW] - hmdorientation[YAW]
+
+each frame gives the weapon's angular error directly. The harness was written
+this session (`tools/turn-probe.py`, applies and reverts itself) but could
+not be run: Virtual
+Desktop was not up, so no session was created and `HandleInput_Default` never
+ran. **Ask for Virtual Desktop to be left running and this is a desk job.**
+
+### 4. Quest 2 only: intro, opening cutscene and the first menu are double vision
+
+Quest 3 is fine, same build. He called it back burner.
+
+Not investigated. Worth knowing before starting: all three of those are
+`useScreenLayer()` cases, where the scene is rendered **once** and shown to both
+eyes on a quad - so ordinary stereo disagreement should be impossible, and
+whatever this is, it is not the defect A family. `Quest_GetScreenRes` returns
+`cylinderSize` rather than the eye buffer size on that path, which is the one
+thing that differs there and is worth looking at first.
 
 ## What a headset session should check next
 
-Everything below is `vr_menu_in_world 2`, set in PC Options as "yes, fixed in
-place". Falling back to 1 is one menu item away if 2 misbehaves.
+1. **Does A skip the intro and the opening cutscene now?** Item 1 above.
+2. Then the things that have still never run in a headset, below - the game
+   select page and `relaunchgame` first, since that is the riskiest.
 
-1. **Does the menu hang still when you turn your head?** That is the whole point
-   of 2.
-2. **Is it in the right place and the right size?** It is placed where the head
-   was looking when the menu opened, at `vr_screen_depth`, sized to the eye
-   buffer's own field of view - so it should appear where and how big it did at
-   1, just no longer moving.
-3. **Does PAUSED sit with it?** It is drawn onto the same layer now, so it should
-   be in the menu's plane rather than floating nearer.
-4. **Does the menu read as one menu?** A quad gets its stereo from the
-   compositor, so this should be automatic - but it is the thing that was wrong
-   twice already.
-5. Then the things that have still never run in a headset, below.
+Items 2 and 3 above should be **measured at the desk before he is asked
+anything**, which needs Virtual Desktop left running. Item 4 is back burner by
+his own call.
 
 ## Still open
 
