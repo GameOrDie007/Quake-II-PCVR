@@ -51,6 +51,11 @@ qboolean VR_MenuInWorld(void);
  * orientation from the head. */
 qboolean VR_InWorldEligible(void);
 
+/* The yaw the attract demo's view is turned by, on top of the head's own. It is
+ * anchored once per demo so the player starts facing where the demo faces, and
+ * the turn stick moves it from there. Zero outside the demo. */
+float VR_DemoYaw(void);
+
 /* True while the menu is being drawn onto a composition layer of its own rather
  * than into the eye buffers - vr_menu_in_world 2. That makes it stay where it
  * was put instead of riding the head, and makes it monoscopic: the compositor

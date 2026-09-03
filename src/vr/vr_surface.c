@@ -227,6 +227,7 @@ static qboolean q2xrInitialised = false;
  * decide what the tuner can and cannot be. */
 static void q2xr_WeaponTuneInput(ovrInputStateTrackedRemote *offNew);
 static void q2xr_CinematicSkipInput(void);
+static void q2xr_DemoTurnInput(ovrInputStateTrackedRemote *domNew);
 
 static qboolean q2xrInstanceReady = false;
 
@@ -1753,6 +1754,7 @@ TBXR_FrameSetup(void)
 		switch ((int)vr_control_scheme->value)
 		{
 			case RIGHT_HANDED_DEFAULT:
+				q2xr_DemoTurnInput(&rightTrackedRemoteState_new);
 				q2xr_WeaponTuneInput(&leftTrackedRemoteState_new);
 				HandleInput_Default(&rightTrackedRemoteState_new, &rightTrackedRemoteState_old,
 						&rightRemoteTracking_new,
@@ -1763,6 +1765,7 @@ TBXR_FrameSetup(void)
 
 			case LEFT_HANDED_DEFAULT:
 			case LEFT_HANDED_SWITCH_STICKS:
+				q2xr_DemoTurnInput(&leftTrackedRemoteState_new);
 				q2xr_WeaponTuneInput(&rightTrackedRemoteState_new);
 				HandleInput_Default(&leftTrackedRemoteState_new, &leftTrackedRemoteState_old,
 						&leftRemoteTracking_new,
@@ -2145,6 +2148,95 @@ q2xr_CinematicSkipInput(void)
 	skippedAt = cl.cinematictime;
 	Com_DPrintf("Cinematic skipped from VR input, new buttons=%u\n", pressed);
 	SCR_FinishCinematic();
+}
+
+/*
+ * Aiming and turning inside the attract demo.
+ *
+ * Handing the demo's orientation to the head fixed it riding the head, but left
+ * two things. The head's yaw is absolute, so where the player physically faces
+ * decides where they face in the demo - which is why it opened looking backwards
+ * down the corridor. And the turn stick, during the attract loop, goes through
+ * HandleInput_Default's menu branch and becomes an arrow key, which
+ * cl_keyboard.c turns into K_ESCAPE, so trying to look around opened the menu
+ * instead.
+ *
+ * One offset answers both. It is anchored once per demo so that the direction
+ * the player is already facing becomes the direction the demo faces - the
+ * subtraction of the head yaw is what makes that true wherever they happen to be
+ * standing - and the turn stick then moves it, so they can look anywhere on the
+ * way past. Anchored per servercount rather than once, because the attract loop
+ * plays several demos in succession and each is its own connection.
+ *
+ * The stick is zeroed afterwards so their handler never sees it and the menu
+ * stays shut. Only the dominant hand's stick, and only while the demo is in the
+ * world: every button still opens the menu exactly as it did.
+ */
+static float q2xrDemoYaw = 0.0f;
+static int q2xrDemoAnchor = -1;
+
+float
+VR_DemoYaw(void)
+{
+	return q2xrDemoYaw;
+}
+
+static void
+q2xr_DemoTurnInput(ovrInputStateTrackedRemote *domNew)
+{
+	static double lastTime = 0.0;
+	double now = global_time;
+	float dt;
+
+	if (!cl.attractloop || !VR_InWorldEligible())
+	{
+		q2xrDemoAnchor = -1;
+		lastTime = 0.0;
+		return;
+	}
+
+	/*
+	 * Not until there is a real playerstate to anchor against. The first frames
+	 * of a demo carry a zeroed one, and anchoring on that aims the player at
+	 * whatever direction zero happens to be for two frames before correcting.
+	 */
+	if (!cl.frame.valid)
+	{
+		return;
+	}
+
+	if (q2xrDemoAnchor != cl.servercount)
+	{
+		q2xrDemoAnchor = cl.servercount;
+		q2xrDemoYaw = cl.frame.playerstate.viewangles[YAW] - hmdorientation[YAW];
+		lastTime = 0.0;
+	}
+
+	dt = (lastTime > 0.0) ? (float)(now - lastTime) : 0.0f;
+	lastTime = now;
+
+	if (dt > 0.1f)
+	{
+		dt = 0.1f;
+	}
+
+	if (fabsf(domNew->Joystick.x) > 0.2f)
+	{
+		q2xrDemoYaw -= domNew->Joystick.x * 90.0f * dt;
+
+		while (q2xrDemoYaw > 180.0f)
+		{
+			q2xrDemoYaw -= 360.0f;
+		}
+
+		while (q2xrDemoYaw < -180.0f)
+		{
+			q2xrDemoYaw += 360.0f;
+		}
+	}
+
+	domNew->Joystick.x = 0.0f;
+	domNew->Joystick.y = 0.0f;
 }
 
 /*

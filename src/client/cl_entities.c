@@ -966,6 +966,7 @@ CL_CalcViewValues(void)
 	if (cl.attractloop && VR_InWorldEligible())
 	{
 		VectorCopy(hmdorientation, cl.refdef.viewangles);
+		cl.refdef.viewangles[YAW] += VR_DemoYaw();
 	}
 
 	/* Do NOT apply weapon kick_angles to the view in VR - the headset must never be
