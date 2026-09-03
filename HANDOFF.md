@@ -204,36 +204,39 @@ it feels weird", and asked whether the demo could be unlocked so he could look
 around, or else be reverted.
 
 **It is a world, not a film.** The attract loop is demo playback of real BSP
-geometry - the log says  - rendered live every frame. The id logo at
+geometry - the log says `Map: base2` - rendered live every frame. The id logo at
 startup is a genuine cinematic; this is not.
 
 **The recording owned the view completely.** Measured with a probe rather than
-argued:  is **4, PM_FREEZE**, so  takes the
-interpolated branch and  follows the playerstate degree for
-degree, while  sits at 0.0 throughout. Local input had no say.
+argued: `pm_type` is **4, PM_FREEZE**, so `CL_CalcViewValues` takes the
+interpolated branch and `cl.refdef.viewangles` follows the playerstate degree
+for degree, while `cl.viewangles` sits at 0.0 throughout. Local input had no
+say.
 
 That is exactly what made it ride the head: the scene is drawn facing wherever
 the recording faces, then submitted on a projection layer posed at the head, so
 the compositor presents it as though it had been drawn facing where the head is.
 
-The fix is four lines in : while , the head owns all three angles and the recording keeps
+The fix is four lines in `cl_entities.c`: while `cl.attractloop &&
+VR_InWorldEligible()`, the head owns all three angles and the recording keeps
 only the position. Carried along its path, free to look anywhere. Pitch and roll
 come from the head too - an imposed horizon is worse than an imposed yaw.
- lost its  and is now in .
+`VR_InWorldEligible()` lost its `static` and is now declared in `vr_surface.h`.
 
 **Proof at the desk, no headset motion needed:** with the headset parked so
- is constant, the probe showed  walking -180.0 ->
--168.1 while  held at -88.1, matching  exactly. Before the change
- tracked . That is the switch.
+`hmdorientation` is constant, the probe showed the recorded angle walking
+-180.0 -> -168.1 while `cl.refdef.viewangles` held at -88.1, matching
+`hmdorientation` exactly. Before the change it tracked the recording. That is
+the switch.
 
 **A screenshot of it could not be taken, and the reason is worth keeping:** a
- chain in an exec'd cfg occupies the same command buffer that Quake II
-queues the startup  attract-loop commands into, so the demo never starts in
+`wait` chain in an exec'd cfg occupies the same command buffer that Quake II
+queues the startup `d1` attract-loop commands into, so the demo never starts in
 a cfg-driven run and the console stays up over it. Any future attempt to
-photograph the attract loop needs a different lever than .
+photograph the attract loop needs a different lever than `wait`.
 
-Backing the whole demo-in-world thing out is still one edit: put 
-back into .
+Backing the whole demo-in-world thing out is still one edit: put
+`cl.attractloop` back into `VR_InWorldEligible()`.
 
 ### 9. Nothing could skip a cutscene any more (fixed, desk-verified)
 
@@ -241,35 +244,39 @@ Reported after 8: "I can't skip the starting level cutscene at all" - worse than
 before, when the trigger at least worked.
 
 **Item 1's two halves cancelled each other out.** Widening
-'s menu branch to cover  means the
-gameplay branch never runs during a movie - and 's skip reads
- and , which only that branch builds. Both are
+`HandleInput_Default`'s menu branch to cover `cl.cinematictime > 0` means the
+gameplay branch never runs during a movie - and `CL_SendCmd`'s skip reads
+`cmd->buttons` and `cmd->upmove`, which only that branch builds. Both are
 therefore permanently zero during a cutscene, so the skip cannot fire, and the
-other half of item 1 (teaching it to count ) was left with nothing to
-count. The note beside the widening says losing gameplay input there "costs
-nothing, because there is no gameplay to lose". It cost the skip.
+other half of item 1 - teaching that skip to count `upmove` - was left with
+nothing to count. The note beside the widening says losing gameplay input there
+"costs nothing, because there is no gameplay to lose". It cost the skip.
 
-**Reverting the widening is not available.**  is read off the
-server () and is false during the startup movie, which relies on
+**Reverting the widening is not available.** `cl.attractloop` is read off the
+server (`cl_parse.c:872`) and is false during the startup movie, which relies on
 the cinematictime clause to get key events at all.
 
- in  now does it from the button state
-directly, doing what  would have. It keeps the one-second guard,
+`q2xr_CinematicSkipInput()` in `vr_surface.c` now does it from the button state
+directly, doing what `CL_SendCmd` would have. It keeps the one-second guard,
 edge-triggers so a held button is one skip rather than one per frame, and
-latches the cinematic it fired on so one press cannot send two s.
+latches the cinematic it fired on so one press cannot send two `nextserver`
+commands while the first is still in flight.
 
-**How it was tested with no controller:** a temporary console command set a
-one-shot flag standing in for a button edge, and  gave a
-cinematic with the server connection a real cutscene has. With  the
-log showed every guard passing - cinematictime 825 against realtime 7550,
-, attractloop 0 - then . Hook removed, grep clean. **This is the pattern for anything else
-that needs a button press at the desk.**
+**How it was tested with no controller.** A temporary console command set a
+one-shot flag standing in for a button edge, and `map eou1_.cin` gave a
+cinematic with the same server connection a real cutscene has. With
+`developer 1` the log showed every guard passing - cinematictime 825 against
+realtime 7550, `ca_active`, attractloop 0 - then `Cinematic skipped from VR
+input, new buttons=1`. The hook was removed and grep reports nothing in either
+file. **This is the pattern for anything else needing a button press at the
+desk.**
 
-The latch is taken on inspection: once the first skip lands, 
-changes the cinematic and the earlier guards take over, so no test isolates it.
+The latch is taken on inspection rather than measured: once the first skip
+lands, `nextserver` changes the cinematic and the earlier guards take over, so
+no test isolates it from them.
 
 **Still not covered:** the startup id movie has no connection, and
- writes  to the netchan, so it cannot work
+`SCR_FinishCinematic` writes `nextserver` into the netchan, so it cannot work
 there. Dismissing that one still goes through the menu.
 
 ### 6. The HUD drew health and ammo on top of their own icons (fixed, desk-verified)
