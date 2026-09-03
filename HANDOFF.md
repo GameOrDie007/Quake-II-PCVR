@@ -197,6 +197,44 @@ headset not streaming, nothing ticks at all. No map loads, no frame renders. Tha
 is also the state a player would land in if they launched with VD running and the
 headset asleep, so it is worth handling on its own account.
 
+### 8. The demo is a world, and the head now steers it (fixed, desk-verified)
+
+The owner tried 7 in the headset: "it feels like a movie attached to my head, so
+it feels weird", and asked whether the demo could be unlocked so he could look
+around, or else be reverted.
+
+**It is a world, not a film.** The attract loop is demo playback of real BSP
+geometry - the log says  - rendered live every frame. The id logo at
+startup is a genuine cinematic; this is not.
+
+**The recording owned the view completely.** Measured with a probe rather than
+argued:  is **4, PM_FREEZE**, so  takes the
+interpolated branch and  follows the playerstate degree for
+degree, while  sits at 0.0 throughout. Local input had no say.
+
+That is exactly what made it ride the head: the scene is drawn facing wherever
+the recording faces, then submitted on a projection layer posed at the head, so
+the compositor presents it as though it had been drawn facing where the head is.
+
+The fix is four lines in : while , the head owns all three angles and the recording keeps
+only the position. Carried along its path, free to look anywhere. Pitch and roll
+come from the head too - an imposed horizon is worse than an imposed yaw.
+ lost its  and is now in .
+
+**Proof at the desk, no headset motion needed:** with the headset parked so
+ is constant, the probe showed  walking -180.0 ->
+-168.1 while  held at -88.1, matching  exactly. Before the change
+ tracked . That is the switch.
+
+**A screenshot of it could not be taken, and the reason is worth keeping:** a
+ chain in an exec'd cfg occupies the same command buffer that Quake II
+queues the startup  attract-loop commands into, so the demo never starts in
+a cfg-driven run and the console stays up over it. Any future attempt to
+photograph the attract loop needs a different lever than .
+
+Backing the whole demo-in-world thing out is still one edit: put 
+back into .
+
 ### 6. The HUD drew health and ammo on top of their own icons (fixed, desk-verified)
 
 `single_statusbar` (`g_spawn.c:725`) positions with **`xh`**, which is Team

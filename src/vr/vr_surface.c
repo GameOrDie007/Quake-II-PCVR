@@ -2172,7 +2172,7 @@ q2xr_WeaponTuneInput(ovrInputStateTrackedRemote *offNew)
  * quad along with everything else that is not gameplay, which is why the first
  * menu was a flat panel.
  */
-static qboolean
+qboolean
 VR_InWorldEligible(void)
 {
 	return ((vr_menu_in_world != NULL) && (vr_menu_in_world->value != 0) &&
