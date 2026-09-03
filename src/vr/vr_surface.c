@@ -2156,20 +2156,35 @@ q2xr_WeaponTuneInput(ovrInputStateTrackedRemote *offNew)
  * out of VR: the world stops being stereo, the head stops moving the view, and
  * coming back does it all in reverse.
  *
- * With vr_menu_in_world on, the one case of an in-game menu keeps the world
- * where it is. Everything else still uses the flat screen, and must: the main
- * menu has no world to render behind it, a cinematic is a flat film, and the
- * attract loop is a demo.
+ * With vr_menu_in_world on, a menu keeps the world where it is. What still has
+ * to use the flat screen is a cinematic, which is a flat film, and the state
+ * before any connection exists, which has no world to render at all.
  */
-qboolean
-VR_MenuInWorld(void)
+/*
+ * True when the in-world treatment applies at all: the feature is on, a session
+ * is running, there is a world to render, and it is not a cinematic - a movie
+ * is a flat panel by its nature and stays one.
+ *
+ * The attract demo counts. It is served by a local server in attract mode
+ * (SV_Map with attractloop set), so the client is an ordinary connected client
+ * at ca_active and the renderer has a real world to draw; only the server's
+ * refusal to act on the commands makes it a demo. Team Beef sent it to the flat
+ * quad along with everything else that is not gameplay, which is why the first
+ * menu was a flat panel.
+ */
+static qboolean
+VR_InWorldEligible(void)
 {
 	return ((vr_menu_in_world != NULL) && (vr_menu_in_world->value != 0) &&
 			TBXR_IsRunning() &&
 			(cls.state == ca_active) &&
-			(cls.key_dest == key_menu) &&
-			!cl.attractloop &&
 			(cl.cinematictime == 0));
+}
+
+qboolean
+VR_MenuInWorld(void)
+{
+	return VR_InWorldEligible() && (cls.key_dest == key_menu);
 }
 
 /*
@@ -2189,7 +2204,16 @@ VR_MenuOwnLayer(void)
 bool
 useScreenLayer(void)
 {
-	if (VR_MenuInWorld())
+	/*
+	 * Deliberately wider than VR_MenuInWorld(): the demo behind the first menu
+	 * stays in the projection layer whether or not the menu is open, so that
+	 * opening it does not flip the whole scene between a flat quad and stereo.
+	 * That transition is the jarring part, not either state.
+	 *
+	 * The console is left out. It is a wall of text that wants to be read, the
+	 * flat panel is the right place for it, and it is not what this is for.
+	 */
+	if (VR_InWorldEligible() && cls.key_dest != key_console)
 	{
 		return false;
 	}
