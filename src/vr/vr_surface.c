@@ -2444,8 +2444,17 @@ VR_Init(void)
 
 	srand(time(NULL));
 
-	vr_snapturn_angle = Cvar_Get("vr_snapturn_angle", "45", CVAR_ARCHIVE);
-	vr_smoothturn = Cvar_Get("vr_smoothturn", "0", CVAR_ARCHIVE);
+	/*
+	 * Smooth turn out of the box, at a third of the Turn Speed slider. Theirs
+	 * was a 45-degree snap ("45" with vr_smoothturn "0"); this is a deliberate
+	 * PC-side choice, and 45 remains the snap angle for anyone who switches
+	 * back to it on the Options page. Both cvars are CVAR_ARCHIVE, so this only
+	 * reaches a player whose config.cfg does not already carry them - existing
+	 * installs keep whatever they were set to. See vr_surface.h for why these
+	 * two have to be chosen together.
+	 */
+	vr_snapturn_angle = Cvar_Get("vr_snapturn_angle", VR_TURN_SMOOTH_DEFAULT_STR, CVAR_ARCHIVE);
+	vr_smoothturn = Cvar_Get("vr_smoothturn", "1", CVAR_ARCHIVE);
 	vr_walkdirection = Cvar_Get("vr_walkdirection", "1", CVAR_ARCHIVE); /* 1 = gaze/HMD direction (default), 0 = off-hand controller */
 	vr_weapon_pitchadjust = Cvar_Get("vr_weapon_pitchadjust", "-20.0", CVAR_ARCHIVE);
 	vr_control_scheme = Cvar_Get("vr_control_scheme", "0", CVAR_ARCHIVE);

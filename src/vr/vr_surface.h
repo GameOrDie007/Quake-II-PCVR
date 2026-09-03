@@ -70,4 +70,27 @@ qboolean VR_MenuOwnLayer(void);
 void SCR_DrawMenuLayer(void);
 void TBXR_ShutdownOpenXR(void);
 
+/*
+ * Turning. One cvar, vr_snapturn_angle, carries two different quantities, and
+ * its own magnitude says which: above VR_TURN_SNAP_THRESHOLD it is a snap in
+ * degrees, at or below it is the divisor of a continuous turn, where a *lower*
+ * number turns faster. That is Team Beef's design and the turning code in
+ * VrInputDefault.c reads it directly, so the threshold here has to keep
+ * agreeing with the two `> 10.0f` tests in that file.
+ *
+ * vr_smoothturn is ours and is only the Options page's display flag - it picks
+ * which control that page shows. It cannot decide how the engine turns, so the
+ * page has to keep vr_snapturn_angle inside the range of whichever mode it is
+ * showing, or it will show a Turn Speed slider over a value that is still a
+ * snap angle.
+ *
+ * The smooth default is a third of the way along the 1..10 slider: slider 4,
+ * so 11 - 4.
+ */
+#define VR_TURN_SNAP_THRESHOLD      10.0f
+#define VR_TURN_SNAP_DEFAULT        45.0f
+#define VR_TURN_SNAP_DEFAULT_STR    "45"
+#define VR_TURN_SMOOTH_DEFAULT      7.0f
+#define VR_TURN_SMOOTH_DEFAULT_STR  "7"
+
 #endif /* VR_SURFACE_H */
