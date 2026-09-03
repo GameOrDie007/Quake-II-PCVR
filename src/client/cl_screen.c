@@ -2003,8 +2003,22 @@ SCR_ExecuteLayoutString(char *s,float separation)
 		}
 		if (!strcmp(token, "xh"))
 		{
+			/*
+			 * Team Beef's own layout command - it is not in stock Quake II or
+			 * in yquake2 - and they moved single_statusbar onto it
+			 * (g_spawn.c). Theirs placed it in raw pixels while the numbers and
+			 * icons it positions are drawn at "scale", which only holds
+			 * together while scale is about 1. On PC it is around five, so the
+			 * three health digits were drawn ~250px wide into a slot 50px from
+			 * the icon and the icon landed on top of them; ammo the same.
+			 *
+			 * The offsets themselves are a stock 320-wide layout - 0, 50, 100,
+			 * 150, 200, 250, 296 - so this is what they have always meant, and
+			 * it is xv's expression exactly. At scale 1 it is also theirs
+			 * exactly.
+			 */
 			token = COM_Parse (&s);
-			x = viddef.width/2 - 160 + atoi(token) + offset_stereo;
+			x = viddef.width / 2 - scale*160 + scale*(int)strtol(token, (char **)NULL, 10) + offset_stereo;
 			continue;
 		}
 

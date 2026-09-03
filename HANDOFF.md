@@ -29,9 +29,11 @@ rather than cheaply. **All four are confirmed working in the headset.**
 Everything is still behind `vr_menu_in_world`, which defaults to 0.
 
 The same session turned up four new things, none of them to do with the menu,
-and the owner then reported a fifth - the quit that left a process behind. See
-"Found in the headset" below. Two are fixed and unconfirmed, two are diagnosed
-but unmeasured, one is back burner.
+and the owner then reported the quit that leaves a process behind and an
+overlapping HUD. See "Found in the headset" below. **The process leak is fixed
+and confirmed**; the HUD overlap and the input routing are fixed and
+desk-verified; the two turn bugs are diagnosed but unmeasured; the Quest 2
+double vision is back burner.
 
 ### A. The pause menu now has a per-eye offset
 
@@ -161,26 +163,59 @@ So A, B, C and D are done. What he found instead is four new things, below.
 
 ## Found in the headset 2026-09-03, not yet fixed
 
-### 1. A does not skip the intro or the opening cutscene (fixed, untested)
+### 6. The HUD drew health and ammo on top of their own icons (fixed, desk-verified)
 
-Only the trigger and B skipped them; A did nothing. `CL_SendCmd` in
-`cl_input.c` masks `BUTTON_ANY` in VR - added in an earlier session to stop a
-stuck key skipping things - and after that mask only the trigger still sets a
-bit in `cmd->buttons` at all. Team Beef route the face buttons through movement
-instead: B is `K_SPACE` bound to `+moveup`, A is a direct `+movedown` console
-command, and both land in `cmd->upmove`.
+`single_statusbar` (`g_spawn.c:725`) positions with **`xh`**, which is Team
+Beef's own layout command - it is in neither stock Quake II nor yquake2, and
+arrived with the vendor commit. Theirs placed it in **raw pixels**, while the
+digits and icons it positions are drawn at `scale`. That holds together only
+while `scale` is about 1. On PC it is around five, so the three health digits
+were drawn some 250px wide into a slot 50px from their icon, and the icon landed
+on top of them. Ammo the same.
 
-Any deliberate input now skips, whichever route it takes:
-`(skipButtons != 0) || (cmd->upmove != 0)`. `upmove` is driven only by the
-in_up/in_down key states, never by head or room-scale movement, so it cannot
-fire on its own, and the existing one-second guard still applies.
+`xh` now uses `xv`'s expression. The offsets in the layout - 0, 50, 100, 150,
+200, 250, 296 - are a stock 320-wide layout, which is what `xv` is for, so this
+is what they have always meant; and at `scale` 1 it is byte-for-byte theirs.
 
-**Caveat worth knowing.** That account does not explain why **B worked for him
-and A did not** - by the code both are `upmove` and neither should have skipped.
-Something in the model is wrong. The fix covers every route rather than the one
-I think is at fault, so it should work either way, but if A still does nothing
-the model is where to look. `Com_DPrintf` there now prints `upmove` as well as
-`buttons`; `developer 1` will show it.
+Desk-verified by photograph: before, the cross sat over the digits; after, "100"
+and the cross sit side by side, correctly spaced. This is the
+[[vr-port-platform-seam-pattern]] exactly - their code is fine on their
+platform, and the PC's larger UI scale is what breaks it.
+
+### 1. Cinematics, the demo loop, and the menu ignored A and the trigger (fixed, untested)
+
+Three symptoms, reported across two rounds, all one cause:
+
+- A did not skip the startup id movie.
+- A did not skip the opening cutscene.
+- At the demo loop that plays behind the first menu, only B brought the menu
+  up - not A, not the trigger.
+
+**Only B produces a `Key_Event`.** In gameplay Team Beef send the trigger out as
+a `+attack` console command and A as `+movedown` (`VrInputDefault.c:386, 394`),
+and a console command never reaches `Key_Event`. B alone goes through
+`handleTrackedControllerButton(..., K_SPACE)`. And `Key_Event` is exactly what
+breaks the attract loop into the menu - `cl_keyboard.c:1174` turns any key into
+`K_ESCAPE` there - and what dismisses the startup movie, which has no connection
+and so never reaches the skip in `CL_SendCmd` at all.
+
+The trigger *appeared* to work on an in-game cutscene only because `+attack`
+sets `BUTTON_ATTACK`, which `CL_SendCmd` does check - and that path needs a
+connection.
+
+Two changes:
+
+- `HandleInput_Default`'s menu branch now also covers `cl.attractloop` and
+  `cl.cinematictime > 0`, so during a movie or the demo every button is a key
+  event, as it already was in a menu. Losing gameplay input there costs nothing,
+  because there is no gameplay to lose.
+- `CL_SendCmd`'s in-game skip counts `cmd->upmove` as well as `cmd->buttons`,
+  which is what made A skip the opening cutscene in the first round. `upmove` is
+  driven only by the in_up/in_down key states, never by head or room-scale
+  movement, so it cannot fire on its own, and the one-second guard still applies.
+
+The first round's fix was made without this second half, and the note here said
+at the time that it did not explain why B worked and A did not. It now does.
 
 ### 5. Quitting left the process behind and locked the exe (fixed, unconfirmed)
 
@@ -208,22 +243,20 @@ through `STOPPING`, which the existing event handler already turns into
 textures in the GL context `VID_Shutdown` destroys. The wait is bounded at two
 seconds: trading a stray process for a hung quit would be worse.
 
-**The evidence is strong but the fix is unconfirmed.** Every zombie on this
-machine came from a run that created a session; every run that got no session
-exited and was reaped, including one after the fix. What has not been done is a
-run **with** a session after the fix, because that needs the headset streaming.
-That is the one thing to check. If a stray still appears, the next suspect is
-the runtime holding the handle irrespective of teardown - in which case the fix
-is still correct (an undestroyed session leaks runtime resources and can wedge
-the next app) but is not the whole story.
+**Confirmed fixed.** The owner ran the fixed build in the headset at 14:36 -
+`stdout.txt` in the install shows `session created` and three swapchains, so it
+was a real session - quit, and **left no process behind**. No "session did not
+stop in time" either, so the teardown completed inside the bounded wait. Before
+the fix, every session-bearing run left one.
 
-To check, after quitting the game:
+To check it again after any change here:
 
 ```
-Get-CimInstance Win32_Process -Filter "Name='yquake2.exe'" | Select ProcessId,CreationDate
+Get-CimInstance Win32_Process -Filter "Name='yquake2.exe'" | Where-Object { $_.CreationDate -gt (Get-Date).AddMinutes(-10) } | Select ProcessId,CreationDate
 ```
 
-Nothing listed is the pass.
+Nothing listed is the pass. Filter by time - strays from before the fix persist
+until a reboot and will otherwise confuse the reading.
 
 ### 2. Snap turn throws the weapon to one side for a frame
 
@@ -283,10 +316,10 @@ thing that differs there and is worth looking at first.
 
 ## What a headset session should check next
 
-1. **Does a stray `yquake2.exe` still remain after quitting?** Item 5 above -
-   needs the headset streaming, since only a run that creates a session ever
-   left one. This is the one that has been costing build time.
-2. **Does A skip the intro and the opening cutscene now?** Item 1 above.
+1. **Does A now skip the id movie and the opening cutscene, and does any button
+   bring up the first menu?** Item 1 above.
+2. **Is the HUD still readable and sensibly placed?** Item 6 moved it; the
+   overlap is gone but the spacing has only been judged at the desk.
 3. Then the things that have still never run in a headset, below - the game
    select page and `relaunchgame` first, since that is the riskiest.
 

@@ -113,7 +113,27 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
 	handleTrackedControllerButton(primaryButtonsNew, primaryButtonsOld, ovrButton_Enter, K_ESCAPE);
 	handleTrackedControllerButton(secondaryButtonsNew, secondaryButtonsOld, ovrButton_Enter, K_ESCAPE);
 
-    if (cls.key_dest == key_menu)
+    /*
+     * A cinematic or the attract demo is not gameplay, so treat the controller
+     * as a menu controller there as well.
+     *
+     * Only the branch below turns a button into a Key_Event. In gameplay Team
+     * Beef send the dominant trigger out as a "+attack" console command and A
+     * as "+movedown", and a console command never reaches Key_Event - so on PC
+     * only B, which is K_SPACE, could break the attract loop into the menu
+     * (cl_keyboard.c turns any key into K_ESCAPE there) or dismiss the startup
+     * id movie. The trigger appeared to work on an in-game cutscene only
+     * because +attack sets BUTTON_ATTACK, which CL_SendCmd checks - and that
+     * path needs a connection, which the startup movie has not got.
+     *
+     * The reported symptom was three-sided and this is the one cause: A did not
+     * skip the id movie, A did not skip the opening cutscene, and the main
+     * menu came up for B but not for A or the trigger.
+     *
+     * Losing gameplay input for the duration costs nothing, because there is no
+     * gameplay to lose.
+     */
+    if (cls.key_dest == key_menu || cl.attractloop || cl.cinematictime > 0)
     {
         //Allow both sticks and all buttons to work in the menu
         {
