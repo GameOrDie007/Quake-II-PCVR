@@ -161,12 +161,21 @@ only the include guard renamed, so the layouts cannot drift.
 
 What is worth knowing before playing:
 
-* **The nine new weapons have untuned offsets.** Every weapon the packs share
-  with Quake II keeps Team Beef's tuned `vr_weapon_adjustment` values, because
-  both packs use the same `WEAP_` numbering for those. The Ionripper, Phalanx,
-  ETF Rifle, Prox Launcher, Plasma Beam, Chainfist and Disruptor start at the
-  engine's default and want adjusting by eye - each pack's `autoexec.cfg` names
-  them.
+* **Six new weapons have untuned offsets.** Every weapon the packs share with
+  Quake II keeps Team Beef's tuned `vr_weapon_adjustment` values, because both
+  packs use the same `WEAP_` numbering for those. The Prox Launcher gets theirs
+  too: `v_plaunch` is `v_launch` reskinned - same vertices, triangles and
+  frames, byte for byte - so the Grenade Launcher's value is right for it. The
+  Ionripper, Phalanx, ETF Rifle, Plasma Beam, Chainfist and Disruptor start at
+  the engine's default and want adjusting by eye.
+
+  Turn on **weapon alignment** in PC Options and the offsets for whatever is in
+  your hand appear in the game, adjusted with the off hand's stick - held grip
+  for finer steps. It draws in the game rather than on a menu page because a
+  menu drops both eyes onto a flat quad and stops the weapon tracking your hand,
+  which is the one thing that has to be judged. `vrweapon save` at the console
+  writes the result to the gamedir's `weapons.cfg`, which Setup never
+  overwrites, so re-running Setup cannot undo it.
 * **The Plasma Beam draws from the face.** Its start point is computed
   client-side from `cl.refdef.vieworg` plus `gunoffset`, and `gunoffset` is zero
   in VR. The damage trace is already correct; the beam is not.

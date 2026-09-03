@@ -366,6 +366,11 @@ void CL_ParticleEffect2 (vec3_t org, vec3_t dir, int color, int count);
 void CL_ParticleEffect3 (vec3_t org, vec3_t dir, int color, int count);
 
 void CL_UpdateLaserSightOrigins ();
+void SCR_DrawWeaponTune(float separation);
+void SCR_WeaponTuneAdjust(int rows, float delta);
+extern cvar_t *vr_weapon_tune;
+extern cvar_t *vr_menu_in_world;
+void CL_VRGunOrigin(vec3_t out);
 
 typedef struct particle_s
 {

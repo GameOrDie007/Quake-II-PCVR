@@ -26,6 +26,7 @@
 
 #include "header/client.h"
 #include "sound/header/local.h"
+#include "../vr/vr_surface.h"
 
 typedef enum
 {
@@ -543,6 +544,19 @@ extern vec3_t weaponoffset;
 extern vec3_t hmdPosition;
 extern cvar_t *vr_height_adjust;
 
+/* Where the gun is in the world, as opposed to where the head is.
+ *
+ * The laser sight worked this out first and is verified in the headset, so the
+ * maths is lifted here verbatim rather than written a second time - anything
+ * that has to leave the muzzle needs the same answer, and two copies of it
+ * would drift. The vieworg is expected to already carry the player height. */
+void CL_VRGunOrigin(vec3_t out)
+{
+	convertFromVRtoQ2(weaponoffset, cl.refdef.vieworg, out);
+	out[2] -= (QUAKE_MARINE_HEIGHT * vr_worldscale->value);
+	out[2] += ((hmdPosition[1] + vr_height_adjust->value) * vr_worldscale->value);
+}
+
 void CL_UpdateLaserSightOrigins ()
 {
 	if (cl_lasersight.endtime > cl.time) {
@@ -551,9 +565,7 @@ void CL_UpdateLaserSightOrigins ()
 		vec3_t gunorigin;
 
 		//At the point of calling this, the vieworg should already have the player height included
-		convertFromVRtoQ2(weaponoffset, cl.refdef.vieworg, gunorigin);
-        gunorigin[2] -= (QUAKE_MARINE_HEIGHT * vr_worldscale->value);
-        gunorigin[2] += ((hmdPosition[1] + vr_height_adjust->value) * vr_worldscale->value);
+		CL_VRGunOrigin(gunorigin);
 		//gunorigin[2] += 1; // just add a little bit
 		// Aim the laser along the recoiled weapon direction so the dot/line tracks the
 		// muzzle climb: bullets are fired along v_angle + kick_angles, and in VR v_angle
@@ -1554,19 +1566,43 @@ CL_AddPlayerBeams(void)
 								  + cl.lerpfrac * (ps->gunoffset[j] - ops->gunoffset[j]);
 				}
 
-				VectorMA(b->start, (hand_multiplier * b->offset[0]),
-						cl.v_right, org);
-				VectorMA(org, b->offset[1], cl.v_forward, org);
-				VectorMA(org, b->offset[2], cl.v_up, org);
+				/* In VR the beam has to leave the gun rather than the face.
+				 * Stock reads the muzzle off the view twice over: the start is
+				 * the vieworg plus the player state's gunoffset, and the basis
+				 * copied below is the view's, which further down replaces the
+				 * beam's direction with wherever the head is looking. Both are
+				 * right when the gun is welded to the camera and wrong when it
+				 * is in a hand - gunoffset is zero in VR, so the beam left from
+				 * between the eyes and pointed along the gaze while the damage
+				 * trace went where the weapon aimed.
+				 *
+				 * The origin is the laser sight's, and the basis is the
+				 * weapon's recoiled aim - the same direction the bullets and
+				 * the trace already use. */
+				if (TBXR_IsRunning())
+				{
+					vec3_t aimangles;
+
+					CL_VRGunOrigin(b->start);
+					VectorAdd(weaponangles, cl.frame.playerstate.kick_angles,
+							aimangles);
+					AngleVectors(aimangles, f, r, u);
+				}
+				else
+				{
+					VectorCopy(cl.v_right, r);
+					VectorCopy(cl.v_forward, f);
+					VectorCopy(cl.v_up, u);
+				}
+
+				VectorMA(b->start, (hand_multiplier * b->offset[0]), r, org);
+				VectorMA(org, b->offset[1], f, org);
+				VectorMA(org, b->offset[2], u, org);
 
 				if ((hand) && (hand->value == 2))
 				{
-					VectorMA(org, -1, cl.v_up, org);
+					VectorMA(org, -1, u, org);
 				}
-
-				VectorCopy(cl.v_right, r);
-				VectorCopy(cl.v_forward, f);
-				VectorCopy(cl.v_up, u);
 			}
 			else
 			{
@@ -1601,7 +1637,7 @@ CL_AddPlayerBeams(void)
 
 			if ((hand) && (hand->value == 2))
 			{
-				VectorMA(org, -1, cl.v_up, org);
+				VectorMA(org, -1, u, org);
 			}
 		}
 

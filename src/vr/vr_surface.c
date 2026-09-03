@@ -67,6 +67,7 @@ PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 #include "teambeef/VrCommon.h"
 
 #include "../client/header/client.h"
+#include "vr_surface.h"
 
 #define Q2XR_CHECK_XR(call) q2xr_CheckXr((call), #call, __LINE__)
 #define Q2XR_SWAPCHAIN_TIMEOUT 1000000000LL
@@ -217,6 +218,11 @@ static XrPosef q2xrHeadPoseStage;
 static qboolean q2xrWasUsingScreenLayer = false;
 static XrPosef q2xrScreenLayerPose;
 static qboolean q2xrInitialised = false;
+
+/* Defined below, beside useScreenLayer, because the two are the pair that
+ * decide what the tuner can and cannot be. */
+static void q2xr_WeaponTuneInput(ovrInputStateTrackedRemote *offNew);
+
 static qboolean q2xrInstanceReady = false;
 
 static XrActionSet actionSet = XR_NULL_HANDLE;
@@ -1659,6 +1665,7 @@ TBXR_FrameSetup(void)
 		switch ((int)vr_control_scheme->value)
 		{
 			case RIGHT_HANDED_DEFAULT:
+				q2xr_WeaponTuneInput(&leftTrackedRemoteState_new);
 				HandleInput_Default(&rightTrackedRemoteState_new, &rightTrackedRemoteState_old,
 						&rightRemoteTracking_new,
 						&leftTrackedRemoteState_new, &leftTrackedRemoteState_old,
@@ -1668,6 +1675,7 @@ TBXR_FrameSetup(void)
 
 			case LEFT_HANDED_DEFAULT:
 			case LEFT_HANDED_SWITCH_STICKS:
+				q2xr_WeaponTuneInput(&rightTrackedRemoteState_new);
 				HandleInput_Default(&leftTrackedRemoteState_new, &leftTrackedRemoteState_old,
 						&leftRemoteTracking_new,
 						&rightTrackedRemoteState_new, &rightTrackedRemoteState_old,
@@ -1851,10 +1859,104 @@ TBXR_FrameSetup(void)
 	}
 }
 
+/*
+ * Weapon alignment takes the off hand's stick.
+ *
+ * This sits on our side of the seam rather than in HandleInput_Default, which is
+ * Team Beef's file and is byte-identical to theirs bar one documented
+ * correction - worth keeping that way. The stick is read here and then zeroed in
+ * the state their handler is about to be given, so their code sees a neutral
+ * stick and the player simply does not walk while tuning. Everything else - the
+ * dominant hand, aiming, firing, turning - is untouched and still theirs, which
+ * matters because the gun has to be moved around and looked at from angles while
+ * its offset is being judged.
+ *
+ * Off by default, so an untouched install never reaches any of this.
+ */
+static void
+q2xr_WeaponTuneInput(ovrInputStateTrackedRemote *offNew)
+{
+	static int lastRowDir = 0;
+	static double nextRepeat = 0.0;
+	float x, y;
+	int rowDir;
+	float step;
+
+	if ((vr_weapon_tune == NULL) || !vr_weapon_tune->value ||
+		(cls.key_dest != key_game))
+	{
+		lastRowDir = 0;
+		return;
+	}
+
+	x = offNew->Joystick.x;
+	y = offNew->Joystick.y;
+
+	/* Rows step once per push, so a row cannot be skipped by holding it. */
+	rowDir = (y > 0.7f) ? -1 : ((y < -0.7f) ? 1 : 0);
+
+	if ((rowDir != lastRowDir) && (rowDir != 0))
+	{
+		SCR_WeaponTuneAdjust(rowDir, 0.0f);
+	}
+
+	lastRowDir = rowDir;
+
+	/* Values repeat while held - a whole unit is a long way at 0.1 a push, and
+	 * Team Beef's own numbers carry one decimal (7.4, 3.6, -0.8), so the fine
+	 * step has to be able to reach them. */
+	step = (offNew->GripTrigger > 0.5f) ? 0.1f : 0.5f;
+
+	if (fabsf(x) > 0.5f)
+	{
+		if (global_time >= nextRepeat)
+		{
+			SCR_WeaponTuneAdjust(0, (x > 0.0f) ? step : -step);
+			nextRepeat = global_time + 0.12;
+		}
+	}
+	else
+	{
+		nextRepeat = 0.0;
+	}
+
+	/* Their handler must not also act on this stick. */
+	offNew->Joystick.x = 0.0f;
+	offNew->Joystick.y = 0.0f;
+}
+
+/*
+ * Team Beef put every menu, the console, demos and cinematics onto a flat quad
+ * in front of the player, because on a Quest that is the whole of the UI story
+ * and there is nothing else to show. The cost on PC is that pausing drops you
+ * out of VR: the world stops being stereo, the head stops moving the view, and
+ * coming back does it all in reverse.
+ *
+ * With vr_menu_in_world on, the one case of an in-game menu keeps the world
+ * where it is. Everything else still uses the flat screen, and must: the main
+ * menu has no world to render behind it, a cinematic is a flat film, and the
+ * attract loop is a demo.
+ */
+qboolean
+VR_MenuInWorld(void)
+{
+	return ((vr_menu_in_world != NULL) && (vr_menu_in_world->value != 0) &&
+			TBXR_IsRunning() &&
+			(cls.state == ca_active) &&
+			(cls.key_dest == key_menu) &&
+			!cl.attractloop &&
+			(cl.cinematictime == 0));
+}
+
 /* bool, not qboolean - VrCommon.h declares it with the C99 type. */
 bool
 useScreenLayer(void)
 {
+	if (VR_MenuInWorld())
+	{
+		return false;
+	}
+
 	return ((cls.state != ca_connected && cls.state != ca_active) ||
 			cls.key_dest != key_game ||
 			cl.attractloop ||
