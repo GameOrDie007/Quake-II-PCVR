@@ -59,95 +59,92 @@ Two limits and one trap:
 **Nothing is mid-edit.** The tree is clean; everything below is either awaiting a
 headset or not started.
 
+### The one open defect
+
+**The X and Y overlays sit too low to read.** Holding X brings up the help
+computer (mission objectives) and Y the inventory; both land near the bottom of
+the view instead of around eye level. Reported 2026-09-03, not yet fixed.
+
+Diagnosed, and it is the same seam as the status bar's `xh` and the weapon
+wheel: **Team Beef deliberately removed the vertical centring term from `yv`.**
+
+    stock 7.41   y = viddef.height / 2 - scale * 120 + scale * value
+    theirs, ours y = viddef.height / 2               + scale * value
+
+A layout written with `yv` is authored inside a 240-unit-tall box meant to sit
+centred on the screen. Without the `- scale * 120` it starts at the vertical
+centre and only grows *downward*, which is tuned for their eye buffer and lands
+far lower on a 3590-tall one. The help computer is built at
+`src/game/player/hud.c:340` and spans `yv 8` to `yv 172`, so at scale 4.5 it
+covers centre+36 to centre+774 - the entire lower half of the view.
+
+The inventory has the same shape of problem in different code:
+`src/client/cl_inventory.c:159` anchors at `y = viddef.height / 2` and then grows
+down by `scale * 24`, `scale * 16` and `scale * 8` per row.
+
+**Two ways to fix it, and the choice matters:**
+
+1. **Restore stock's `- scale * 120`** in `yv` (`cl_screen.c:2073`) and centre the
+   inventory block on its own height. Principled - it puts a 240-tall layout
+   where it was authored to go - and it is a platform correctness fix of exactly
+   the kind `R_SetFrustum` and `xh` already are, so it belongs in both branches.
+   Check it does not move anything else that uses `yv`; the status bar uses `yb`
+   and should be untouched.
+2. **Lift them with a cvar**, the way `vr_hud_height` lifts the status bar. Safer
+   and adjustable in the headset, but it is a second knob for the same class of
+   problem the other two fixed properly.
+
+Prefer 1, verify by photograph at the eye buffer's aspect, and only reach for 2
+if 1 turns out to move something it should not.
+
 ### Awaiting his headset
 
-- **The cutscene skip** (`4db08e25`). He reported he could not skip the starting
-  level cutscene at all. Fixed and desk-verified with the fake-press hook, never
-  tried by hand. Any face button or the trigger, after the first second.
-- **The demo's head steering** (`77a80fe5`). He said "Perfect. It's in world" and
-  that the menu pauses and navigates — but was never asked the specific question,
-  which is whether turning his head now looks around a *stable* world instead of
-  dragging it. Ask outright.
 - **The Plasma Beam** (`09b26186`). It should lie exactly along the laser sight
   line; they share an origin and a recoiled aim now, so a divergence is real.
+  Never explicitly confirmed.
 - **The weapon tuner's stick input has never been exercised.** The drawing, the
   cvar plumbing and `vrweapon save` are all proven at the desk; nothing has ever
   moved that stick. If it does nothing, `q2xr_WeaponTuneInput` in
   `src/vr/vr_surface.c` is where to look.
+- **The demo turn stick** (`a505a003`). Same caveat - the anchor is measured, the
+  stick half has never been pressed. `q2xr_DemoTurnInput`.
 - **The menu's own composition layer** (`vr_menu_in_world 2`, `4823d8df`).
   Everything measurable has been measured; what it *looks* like has not.
-- **HUD spacing** (`d72929a5`). The overlap is gone, but the spacing has only
-  been judged at the desk.
-- **Snap turn** (`2d4c9ea2`). Fixed and measured at the desk; he has not seen it.
-  Does the gun still flick to one side on a snap? Check the crosshair and laser
-  sight on a snap too — same root cause elsewhere, per RazeXR.
 - **The game select page and `relaunchgame` have never run in a headset.**
   Tearing an OpenXR session down and rebuilding it in a new process is the single
   riskiest untested thing in the project. Outstanding since 2026-08-28.
 
-**The startup id movie still cannot be skipped by a button**, and this fix will
-not do it: no server connection, and `SCR_FinishCinematic` works by writing
-`nextserver` into the netchan. Dismissing it still goes through the menu.
+**The startup id movie still cannot be skipped by a button**, and the cutscene
+fix will not do it: no server connection, and `SCR_FinishCinematic` works by
+writing `nextserver` into the netchan. Dismissing it still goes through the menu.
 
-### Weapon lag on turning — both fixed, snap awaiting his headset
+### Answered, no work needed
 
-**Smooth turn (`6081ec0f`) — confirmed fixed by him.** The correction was gated on
-`vr_smoothturn`, which is ours rather than Team Beef's and is only the Options
-page's *display* flag. The engine picks its mode from `vr_snapturn_angle`: over
-10 degrees snaps, at or under it is continuous. The two agreed only while turning
-was changed through that page, so the gate worked by coincidence. **Do not
-re-gate this on a display flag.**
-
-**Snap turn (`2d4c9ea2`) — fixed, needs his eyes.** One character. The correction
-rotated the weapon offset using the same call shape as the placement twenty lines
-above it, and that call negates x going in but not coming out. Writing the
-placement as `f(p) = R(theta).N.p` with `N` negating x, applying it a second time
-gives `R(d).N.R(theta).N.p`, and `N.R(theta).N` is `R(-theta)`, so it lands on
-`R(d-theta).p` rather than the `R(theta+d).N.p` two composed rotations should
-give. **An asymmetric transform is not a rotation and does not compose.** The gun
-went somewhere unrelated for the one frame the correction fired, by an amount
-depending on which way he happened to be facing — which is the "not every time,
-mostly turning left" in the report.
-
-Measured with `tools/snap-probe.py`, which forces the turn stick for one frame so
-the real snap code runs. Before: a right snap put the offset at
-(0.6349, -0.3866) for one frame against the (0.3866, -0.6349) it settles to the
-next — components swapped, about 0.35 units, a gun thrown a third of a metre
-sideways. After: the snap frame and the frame after read the same value, both
-turn directions, yaw unchanged.
-
-**Why it took four attempts across three sessions.** The yaw half of the
-correction is a plain `+= delta` and was right all along, so every round of
-instrumenting the yaw confirmed it and none of them found the fault. The position
-was never printed until RazeXR `3185cc073` — a weapon swimming under smooth turn,
-fixed by placing it from the yaw the scene actually uses — said to look at
-placement rather than angle.
-
-**Still worth checking on this build:** that same Raze commit records "same root
-cause as the crosshair lagging a snap turn", so the crosshair and the laser sight
-may have the same defect here.
-
-The general form is now in the `vr-port-diagnostics` skill under "The weapon
-lags, swims or flicks while turning".
+**Sliding down slopes after you stop running is theirs, not ours.**
+`src/common/pmove.c` is **byte-identical to Team Beef's own** - zero diff - and
+`pm_friction` 6 and `pm_stopspeed` 100 are stock Quake II values. Stick movement
+is also assigned every frame, so a centred stick genuinely gives zero and nothing
+is sticking. Changing it would be a deliberate divergence on the PC branch, not a
+bug fix. He was told; he has not asked for it.
 
 ### Back burner, by his own call
 
-**4. Quest 2 only: intro, opening cutscene and first menu are double vision.**
+**Quest 2 only: intro, opening cutscene and first menu are double vision.**
 Quest 3 is fine on the same build. Not investigated. Worth knowing before
 starting: all three are `useScreenLayer()` cases, where the scene is rendered
 **once** onto a quad, so ordinary stereo disagreement should be impossible and
 this is not the defect-A family. `Quest_GetScreenRes` returns `cylinderSize`
-rather than the eye buffer size on that path — the one thing that differs there,
+rather than the eye buffer size on that path - the one thing that differs there,
 and the place to look first.
 
 ### Not started
 
 - **Six weapons need tuning by eye**: Ionripper and Phalanx (The Reckoning);
   Disruptor, ETF Rifle, Plasma Beam, Chainfist (Ground Zero). The Prox Launcher
-  does **not** — `v_plaunch` is `v_launch` reskinned (same 208 verts, 384 tris,
+  does **not** - `v_plaunch` is `v_launch` reskinned (same 208 verts, 384 tris,
   66 frames, byte-identical vertex data in all 66), so it takes the Grenade
   Launcher's tuned value. **Team Beef's offsets cannot be derived from geometry**
-  — 7 of their 11 sit at the engine default and the variation is almost all in
+  - 7 of their 11 sit at the engine default and the variation is almost all in
   the left/right term. Do not try to fit a model to them again.
 - **Not published.** No `origin` remote, only `upstream` yquake2. The Quake port
   shipped to github.com/GameOrDie007/Quake-PCVR on 2026-08-29; this one never
@@ -219,13 +216,17 @@ Newest first. `git show <hash>` for the reasoning; each message carries it.
 
 | commit | what |
 |---|---|
-| `4db08e25` | Cutscene skip restored — two earlier fixes had cancelled each other out |
+| `a505a003` | Face the right way in the demo, and let the stick look around it |
+| `f87be48a` | The weapon wheel gets the scale the rest of the UI has |
+| `2d4c9ea2` | The snap-turn correction moved the gun to the wrong place |
+| `6081ec0f` | Ask the turning code which mode it is in, not a menu display flag |
+| `4db08e25` | Cutscene skip restored - two earlier fixes had cancelled each other out |
 | `77a80fe5` | The demo is a real world; the head steers it instead of wearing it |
 | `50d70c8f` | The first menu keeps the world behind it |
 | `d72929a5` | HUD scale (`xh` in raw pixels against `scale`); every button works in a movie |
 | `dc8d8759` | OpenXR session destroyed on quit, so the process can be reaped |
 | `c7cf0894` | Any deliberate press skips a cinematic, not just the trigger |
-| `4823d8df` | The menu on a composition layer of its own — `vr_menu_in_world 2` |
+| `4823d8df` | The menu on a composition layer of its own - `vr_menu_in_world 2` |
 | `6f30b37e` | PAUSED and centerprints sit in the menu's plane, not the HUD's |
 | `becbece0` | A pause menu that fuses, over a world that stays lit |
 | `09b26186` | Plasma Beam from the gun; weapon alignment tuner; pause without leaving VR |
@@ -234,5 +235,7 @@ Newest first. `git show <hash>` for the reasoning; each message carries it.
 **Confirmed in the headset:** the pause menu fuses; 3.5m is the right distance
 ("nice and big and easy to read"); the world stays lit; PAUSED sits correctly;
 the menu stays put when fixed and follows the gaze when not; the process leak is
-gone; and the first menu's demo is in the world, with the menu pausing and
-navigating over it.
+gone; the first menu's demo is in the world and now opens facing the right way
+with the stick turning it; snap **and** smooth turn are both clean and the
+crosshair and laser sight track them; and the weapon wheel reads at the right
+size. His words on 2026-09-03: "everything works well".
