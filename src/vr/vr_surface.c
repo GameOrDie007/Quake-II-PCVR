@@ -204,6 +204,7 @@ typedef struct
 	XrView Views[NUM_EYES];
 	XrFrameState FrameState;
 	q2xrFramebuffer Eye[NUM_EYES];
+	q2xrFramebuffer Menu;		/* vr_menu_in_world 2: the menu's own layer */
 	qboolean SessionRunning;
 	qboolean Focused;
 	int Width;
@@ -216,6 +217,9 @@ static int oldtime = 0;
 static int q2xrFrameLogCount = 0;
 static XrPosef q2xrHeadPoseStage;
 static qboolean q2xrWasUsingScreenLayer = false;
+static XrPosef q2xrMenuLayerPose;
+static qboolean q2xrWasUsingMenuLayer = false;
+static qboolean q2xrMenuLayerThisFrame = false;
 static XrPosef q2xrScreenLayerPose;
 static qboolean q2xrInitialised = false;
 
@@ -1465,6 +1469,18 @@ q2xr_InitSession(void)
 		}
 	}
 
+	/*
+	 * The menu's own layer, at eye size so that viddef - which the whole 2D
+	 * layout is measured against - does not have to change. A failure here is
+	 * not fatal: VR_MenuOwnLayer() checks the handle, so the menu simply keeps
+	 * being drawn into the eye buffers as it is at vr_menu_in_world 1.
+	 */
+	if (!q2xrFramebuffer_Create(&gApp.Menu, gApp.Width, gApp.Height))
+	{
+		Com_Printf("VR: no menu layer - the menu will draw into the eye buffers\n");
+		memset(&gApp.Menu, 0, sizeof(gApp.Menu));
+	}
+
 	q2xr_CreateActions();
 	Com_Printf("VR: action setup complete\n");
 	return true;
@@ -1501,6 +1517,10 @@ q2xr_DestroyOpenXR(void)
 	{
 		q2xrFramebuffer_Destroy(&gApp.Eye[eye]);
 	}
+
+	q2xrFramebuffer_Destroy(&gApp.Menu);
+	q2xrWasUsingMenuLayer = false;
+	q2xrMenuLayerThisFrame = false;
 
 	if (gApp.ViewSpace && gApp.ViewSpace != gApp.LocalSpace)
 	{
@@ -1623,9 +1643,11 @@ TBXR_FrameSetup(void)
 	XrCompositionLayerProjection projectionLayer = {XR_TYPE_COMPOSITION_LAYER_PROJECTION};
 	XrCompositionLayerProjectionView projectionViews[NUM_EYES];
 	XrCompositionLayerQuad quadLayer = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+	XrCompositionLayerQuad menuLayerQuad = {XR_TYPE_COMPOSITION_LAYER_QUAD};
 	XrFrameEndInfo endInfo = {XR_TYPE_FRAME_END_INFO};
-	const XrCompositionLayerBaseHeader *layers[2];
+	const XrCompositionLayerBaseHeader *layers[3];
 	uint32_t layerCount = 0;
+	qboolean menuLayer;
 	uint32_t viewCount = 0;
 	qboolean endedQuakeFrame = false;
 	qboolean screenLayer;
@@ -1728,6 +1750,42 @@ TBXR_FrameSetup(void)
 
 	q2xrWasUsingScreenLayer = screenLayer;
 
+	/*
+	 * The menu's own layer. Decided once, here, for the whole frame - see
+	 * VR_MenuOwnLayer(). Never at the same time as the screen layer: that one
+	 * has already collapsed everything onto a quad, and VR_MenuInWorld() is what
+	 * stops it doing so.
+	 */
+	menuLayer = !screenLayer &&
+			(vr_menu_in_world != NULL) && (vr_menu_in_world->value >= 2) &&
+			VR_MenuInWorld() &&
+			(gApp.Menu.Handle != XR_NULL_HANDLE);
+	q2xrMenuLayerThisFrame = menuLayer;
+
+	/*
+	 * Placed where the head was looking when the menu opened, and left there -
+	 * which is the whole point of this mode. Same maths as the screen layer's
+	 * pose above, and deliberately yaw only: a menu that inherited the pitch of
+	 * whatever you happened to be looking at would hang at an angle.
+	 */
+	if (menuLayer && !q2xrWasUsingMenuLayer)
+	{
+		float menuDistance = Cvar_VariableValue("vr_screen_depth");
+		const float yaw = hmdorientation[YAW];
+
+		if (menuDistance <= 0.0f)
+		{
+			menuDistance = 3.5f;
+		}
+
+		q2xrMenuLayerPose.orientation = q2xr_QuatFromYaw(yaw);
+		q2xrMenuLayerPose.position.x = q2xrHeadPoseStage.position.x - sinf(radians(yaw)) * menuDistance;
+		q2xrMenuLayerPose.position.y = q2xrHeadPoseStage.position.y;
+		q2xrMenuLayerPose.position.z = q2xrHeadPoseStage.position.z - cosf(radians(yaw)) * menuDistance;
+	}
+
+	q2xrWasUsingMenuLayer = menuLayer;
+
 	memset(projectionViews, 0, sizeof(projectionViews));
 	eyeCount = screenLayer ? 1 : NUM_EYES;
 
@@ -1822,6 +1880,103 @@ TBXR_FrameSetup(void)
 		Qcommon_EndFrame(time * 1000);
 	}
 
+	/*
+	 * The menu, once, into a transparent target of its own. After both eyes and
+	 * after the engine's frame has closed, because this is drawing and nothing
+	 * else - no simulation runs here.
+	 */
+	if (menuLayer && q2xrFramebuffer_Acquire(&gApp.Menu))
+	{
+		q2xrFramebuffer *fb = &gApp.Menu;
+
+		gl.BindFramebuffer(GL_FRAMEBUFFER, fb->MsaaFrameBuffer);
+		glViewport(0, 0, fb->Width, fb->Height);
+		glScissor(0, 0, fb->Width, fb->Height);
+		glEnable(GL_SCISSOR_TEST);
+		glDepthMask(GL_TRUE);
+
+		/*
+		 * Clear to transparent black, which is what makes this a menu floating
+		 * in the world rather than a black slab in front of it. The engine's 2D
+		 * drawing is alpha-tested rather than blended, so a pixel it does not
+		 * touch keeps this alpha of zero and a pixel it writes carries alpha
+		 * one. Dumped and counted: 95.1% of the buffer is fully transparent,
+		 * 4.9% fully opaque, and 0.06% in between - the edges of the scaled
+		 * plaques, which are magnified with GL_LINEAR. Only that 0.06% could
+		 * tell a premultiplied runtime from an unpremultiplied one, which is
+		 * why no flag is set either way.
+		 */
+		glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glDisable(GL_SCISSOR_TEST);
+		glDisable(GL_FRAMEBUFFER_SRGB);
+
+		/*
+		 * The 2D state RI_BeginFrame would have set, set here instead of by
+		 * calling it: that also handles mode changes, gamma and the draw buffer,
+		 * and clears the window - none of which belongs in the middle of a
+		 * frame. This is only the projection and the state the 2D path needs.
+		 */
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glOrtho(0, viddef.width, viddef.height, 0, -99999, 99999);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+		glDisable(GL_DEPTH_TEST);
+		glDisable(GL_CULL_FACE);
+		glDisable(GL_BLEND);
+		glEnable(GL_ALPHA_TEST);
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+		SCR_DrawMenuLayer();
+
+		q2xrFramebuffer_Resolve(fb);
+		gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
+		q2xrFramebuffer_Release(fb);
+
+		/*
+		 * Sized so the quad subtends the angle the eye buffer does at the same
+		 * distance, which keeps the menu the size it is when drawn into the eye
+		 * buffers - a size the owner has already said is right. Averaged over
+		 * the two eyes, because a single quad has one position and canted
+		 * displays give the eyes different extents.
+		 */
+		{
+			float tanW = 0.0f;
+			float tanH = 0.0f;
+			float distance = Cvar_VariableValue("vr_screen_depth");
+			int i;
+
+			if (distance <= 0.0f)
+			{
+				distance = 3.5f;
+			}
+
+			for (i = 0; i < NUM_EYES; ++i)
+			{
+				tanW += tanf(gApp.Views[i].fov.angleRight) - tanf(gApp.Views[i].fov.angleLeft);
+				tanH += tanf(gApp.Views[i].fov.angleUp) - tanf(gApp.Views[i].fov.angleDown);
+			}
+
+			tanW /= NUM_EYES;
+			tanH /= NUM_EYES;
+
+			menuLayerQuad.type = XR_TYPE_COMPOSITION_LAYER_QUAD;
+			menuLayerQuad.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
+					XR_COMPOSITION_LAYER_CORRECT_CHROMATIC_ABERRATION_BIT;
+			menuLayerQuad.space = gApp.StageSpace;
+			menuLayerQuad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+			menuLayerQuad.subImage.swapchain = fb->Handle;
+			menuLayerQuad.subImage.imageRect.offset.x = 0;
+			menuLayerQuad.subImage.imageRect.offset.y = 0;
+			menuLayerQuad.subImage.imageRect.extent.width = fb->Width;
+			menuLayerQuad.subImage.imageRect.extent.height = fb->Height;
+			menuLayerQuad.pose = q2xrMenuLayerPose;
+			menuLayerQuad.size.width = distance * tanW;
+			menuLayerQuad.size.height = distance * tanH;
+		}
+	}
+
 	oldtime = global_time;
 
 	if (!screenLayer)
@@ -1837,6 +1992,12 @@ TBXR_FrameSetup(void)
 	else if (quadLayer.subImage.swapchain != XR_NULL_HANDLE)
 	{
 		layers[layerCount++] = (const XrCompositionLayerBaseHeader *)&quadLayer;
+	}
+
+	/* After the projection layer, so it composites on top of the world. */
+	if (menuLayerQuad.subImage.swapchain != XR_NULL_HANDLE)
+	{
+		layers[layerCount++] = (const XrCompositionLayerBaseHeader *)&menuLayerQuad;
 	}
 
 	endInfo.displayTime = gApp.FrameState.predictedDisplayTime;
@@ -1946,6 +2107,19 @@ VR_MenuInWorld(void)
 			(cls.key_dest == key_menu) &&
 			!cl.attractloop &&
 			(cl.cinematictime == 0));
+}
+
+/*
+ * Latched at the top of the frame rather than evaluated on demand. The client
+ * asks this from inside the engine frame, once per eye, and the VR side asks it
+ * again afterwards to decide whether to run the layer pass; if a command buffer
+ * moved key_dest in between, the two would disagree and the menu would be drawn
+ * twice or not at all.
+ */
+qboolean
+VR_MenuOwnLayer(void)
+{
+	return q2xrMenuLayerThisFrame;
 }
 
 /* bool, not qboolean - VrCommon.h declares it with the C99 type. */

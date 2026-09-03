@@ -993,6 +993,9 @@ extern int segment;
 static float cursorFactor = 200/15; // 200 is the radius of the ring image
                                     // 15 is the same radius in VR scale
 
+/* Set only while SCR_DrawMenuLayer() is running. */
+static qboolean scr_menu_layer_pass = false;
+
 static qboolean
 SCR_UsingOpenXRStereo(void)
 {
@@ -1106,7 +1109,16 @@ SCR_GetStereoMenuOffset(float separation)
 static int
 SCR_GetStereoOverlayOffset(float separation)
 {
-	if (VR_MenuInWorld())
+	/* The menu layer is one image shown to both eyes, so anything drawn onto it
+	 * must not be shifted at all - the compositor is what makes it stereo. */
+	if (scr_menu_layer_pass)
+	{
+		return 0;
+	}
+
+	/* With the menu on its own layer it is not in the eye buffers, and PAUSED
+	 * has gone with it. What is left here is HUD furniture. */
+	if (VR_MenuInWorld() && !VR_MenuOwnLayer())
 	{
 		return SCR_GetStereoMenuOffset(separation);
 	}
@@ -2558,7 +2570,12 @@ void SCR_UpdateForEye (int eye)
 				SCR_DrawDebugGraph();
 			}
 
-			SCR_DrawPause(separation);
+			/* PAUSED goes with the menu when the menu has a layer of its own,
+			 * so that the two cannot end up at different depths. */
+			if (!VR_MenuOwnLayer())
+			{
+				SCR_DrawPause(separation);
+			}
 
 			SCR_DrawConsole(separation);
 
@@ -2566,16 +2583,43 @@ void SCR_UpdateForEye (int eye)
 			 * none, and the drawing is spread over three files. Hand the offset
 			 * to the 2D primitives instead, and take it back afterwards so
 			 * nothing else picks it up. Zero unless the menu is being drawn into
-			 * the world (VR_MenuInWorld()). */
-			Draw_SetStereoOffset(SCR_GetStereoMenuOffset(separation));
-			M_Draw();
-			Draw_SetStereoOffset(0);
+			 * the world (VR_MenuInWorld()).
+			 *
+			 * Skipped entirely when the menu has its own composition layer -
+			 * SCR_DrawMenuLayer() draws it there instead, once rather than once
+			 * per eye. VR_MenuOwnLayer() is latched for the whole frame so this
+			 * and the layer pass cannot both decide to draw it. */
+			if (!VR_MenuOwnLayer())
+			{
+				Draw_SetStereoOffset(SCR_GetStereoMenuOffset(separation));
+				M_Draw();
+				Draw_SetStereoOffset(0);
+			}
 
 			SCR_DrawLoading();
 		}
 	}
 
 	R_EndFrame();
+}
+
+/*
+ * Everything that belongs on the menu's own composition layer. Called from the
+ * VR frame loop with a transparent target already bound, after both eyes and
+ * outside the engine's frame - so it draws, and does nothing else.
+ *
+ * One image for both eyes, so every offset in here has to be zero;
+ * scr_menu_layer_pass is what makes SCR_GetStereoOverlayOffset say so, and
+ * Draw_SetStereoOffset is already at rest. Separation is passed as 0 for the
+ * same reason.
+ */
+void
+SCR_DrawMenuLayer(void)
+{
+	scr_menu_layer_pass = true;
+	SCR_DrawPause(0.0f);
+	M_Draw();
+	scr_menu_layer_pass = false;
 }
 
 static float

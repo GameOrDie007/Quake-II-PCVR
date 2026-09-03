@@ -1407,3 +1407,102 @@ is the tier-two item, and there are two ways to fix it, of very different sizes:
   plumbing, and testable at the desk with a forced angle - but it is a
   translation, not a rotation, so the panel does not keystone and it degrades at
   large angles.
+
+# The menu on a layer of its own
+
+The owner asked for the proper fix rather than the cheap one, so the gaze-lock is
+gone: `vr_menu_in_world` is now three-way.
+
+| value | what it does |
+| --- | --- |
+| 0 | Team Beef's behaviour. The whole scene collapses onto the flat screen layer. |
+| 1 | Menu drawn into the eye buffers over a live world. Follows the head. |
+| 2 | Menu drawn onto a composition layer of its own. Stays where it was opened. |
+
+## How it is put together
+
+`M_Draw()` is skipped in the eye pass at 2, and `SCR_DrawMenuLayer()` draws it
+once, after both eyes and after the engine's frame has closed, into a third
+swapchain created beside the two eyes. That swapchain is cleared to transparent
+black rather than opaque, and submitted as an `XrCompositionLayerQuad` after the
+projection layer so it composites on top of the world.
+
+**PAUSED goes with it.** It is on the layer, not in the eye buffers, so the two
+cannot end up at different depths - which was the whole of defect C. On the
+layer nothing takes a per-eye offset at all: the compositor is what makes a quad
+stereo, so `scr_menu_layer_pass` forces every offset to zero for the duration.
+
+**The 2D state is set by hand** rather than by calling `R_BeginFrame`, which
+would also handle mode changes, gamma and the draw buffer and would clear the
+window - none of which belongs in the middle of a frame. The nine calls are a
+line-for-line copy of `R_SetGL2D()` in `gl1_main.c`, checked against it; the only
+differences are `glOrtho` for `glOrthof`, which `qgl.h` defines as the same
+function, and `viddef` for `vid`, which a screenshot confirmed hold the same
+numbers.
+
+**The quad is sized from the field of view**, not picked. `distance * (tanRight -
+tanLeft)` makes it subtend exactly what the eye buffer subtends, so the menu is
+the size it already was - a size the owner has said is right - rather than
+whatever a fixed 3-metre quad would give. Averaged over the two eyes, because a
+single quad has one position.
+
+**The decision is latched once a frame.** `VR_MenuOwnLayer()` returns a variable
+set at the top of `q2xr_Frame`, not a fresh test. The client asks it from inside
+the engine frame, once per eye; the VR side asks it again afterwards. If a
+command buffer moved `key_dest` in between, the two would disagree and the menu
+would be drawn twice or not at all.
+
+**A failure to create the swapchain is not fatal.** `VR_MenuOwnLayer()` checks
+the handle, so if the third swapchain cannot be made the menu simply keeps being
+drawn into the eye buffers as at 1.
+
+## The desk turned out to have a headset runtime
+
+This is the correction that matters most for whoever picks this up next.
+
+Everything above was previously described as unverifiable without the owner,
+on the reasoning that `TBXR_IsRunning()` is false with no headset. **That
+reasoning was wrong.** `VirtualDesktopXR` is installed on this machine, and
+while the owner has Virtual Desktop running a second process gets a real
+OpenXR session of its own:
+
+```
+VR: OpenXR runtime is VirtualDesktopXR
+VR: session created
+VR: creating swapchain 3379x3590     <- three of these now, not two
+```
+
+So the whole path runs at the desk. What that made checkable, with no headset
+session spent:
+
+- **The third swapchain is created**, and the run logs three rather than two.
+- **The gate fires.** At 2 the eye buffer contains no menu and no fade, because
+  `M_Draw()` was skipped; at 1 it contains the menu, offset per eye; at 0 it
+  contains the menu centred over a dimmed world, exactly as Team Beef's. Three
+  runs, three screenshots, all three different in the right way. World luminance
+  is 3.60 at 0 against 18.07 at both 1 and 2 - the fade, present and absent.
+- **Two composition layers submit cleanly.** A full run with the quad layer
+  beside the projection layer produced no `XR_ERROR` of any kind.
+- **The drawing is right.** Rendered into a plain framebuffer and dumped with its
+  alpha: the plaque, the cursor, all five items, the id logo and PAUSED, on a
+  background that is 95.1% fully transparent. 4.9% fully opaque, 0.06% in
+  between - the edges of the scaled plaques, magnified with `GL_LINEAR`.
+- **The quad geometry is right.** Logged: `7.754 x 8.378 m at 3.50 m`, which
+  subtends 96 x 100 degrees, and a pose 3.500m from the head at the same height,
+  yaw only. The distance and the pose reproduce the screen layer's formula to
+  three decimals.
+
+What is still headset-only is what it looks like: whether the quad hangs where
+the eye expects it and reads as one menu.
+
+**Two earlier claims need re-reading in this light.** The "flatscreen is
+unchanged" measurements from earlier in the day were really *VR runs with the
+feature off* - `vr_menu_in_world` was 0 in the build tree's `config.cfg`, which
+is why the probe printed `miw=0`, not because there was no session. The
+measurements stand and mean what they said; the explanation of why did not.
+
+## A lesson re-learned the hard way
+
+The Bash tool's heredoc ate the backslashes out of a `\n` inside a C string
+literal - the same fault recorded in [[shell-heredoc-eats-backslashes]] and in
+the previous handoff, committed anyway. Write patch scripts with the Write tool.

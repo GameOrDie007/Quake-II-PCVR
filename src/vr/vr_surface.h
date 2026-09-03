@@ -43,6 +43,19 @@ qboolean TBXR_IsRunning(void);
  * Beef's behaviour the default. Several places have to agree about this, so
  * they all ask here rather than each testing key_dest for themselves. */
 qboolean VR_MenuInWorld(void);
+
+/* True while the menu is being drawn onto a composition layer of its own rather
+ * than into the eye buffers - vr_menu_in_world 2. That makes it stay where it
+ * was put instead of riding the head, and makes it monoscopic: the compositor
+ * gives the quad its stereo, so nothing drawn onto it takes a per-eye offset.
+ * Latched once a frame, so the client and the VR side cannot disagree about it
+ * halfway through one. False unless a menu framebuffer was actually created. */
+qboolean VR_MenuOwnLayer(void);
+
+/* Everything that belongs on that layer, drawn once into a transparent target.
+ * Called from the VR frame loop, after both eyes and outside the engine's
+ * frame. */
+void SCR_DrawMenuLayer(void);
 void TBXR_ShutdownOpenXR(void);
 
 #endif /* VR_SURFACE_H */
