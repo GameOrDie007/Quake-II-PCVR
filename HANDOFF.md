@@ -28,9 +28,10 @@ B were in; and D, the gaze-lock, which the owner asked to have fixed properly
 rather than cheaply. **All four are confirmed working in the headset.**
 Everything is still behind `vr_menu_in_world`, which defaults to 0.
 
-The same session turned up four new things, none of them to do with the menu -
-see "Found in the headset" below. One is fixed and untested; two are diagnosed
-but unmeasured; one is back burner.
+The same session turned up four new things, none of them to do with the menu,
+and the owner then reported a fifth - the quit that left a process behind. See
+"Found in the headset" below. Two are fixed and unconfirmed, two are diagnosed
+but unmeasured, one is back burner.
 
 ### A. The pause menu now has a per-eye offset
 
@@ -181,6 +182,49 @@ I think is at fault, so it should work either way, but if A still does nothing
 the model is where to look. `Com_DPrintf` there now prints `upmove` as well as
 `buttons`; `developer 1` will show it.
 
+### 5. Quitting left the process behind and locked the exe (fixed, unconfirmed)
+
+Reported by the owner: "we need to fix this Quake II bug where the .exe is being
+held open, because it doesn't show up in task manager at all". It had been
+costing this session a rename-the-exe dance on nearly every build.
+
+**`TBXR_ShutdownOpenXR()` was never called from anywhere.** Every VR quit left
+the session and the instance alive. Two things follow, and they explain both
+halves of what he saw:
+
+- The process really does exit - `HasExited` is true on every one of them - so
+  Task Manager's process list is right to not show it. But it is never
+  **reaped**: the runtime still holds a handle, so the kernel object survives
+  with its image section mapped, and that is what keeps `yquake2.exe` locked.
+- `q2xr_DestroyOpenXR` would not have helped even if it had been called. It went
+  straight to `xrDestroySession`, which on a **running** session returns
+  `XR_ERROR_SESSION_RUNNING` and destroys nothing.
+
+So both halves are fixed. `q2xr_EndSessionAndWait` does what the spec asks -
+`xrRequestExitSession`, then pump events until the runtime drives the session
+through `STOPPING`, which the existing event handler already turns into
+`xrEndSession` - and `CL_Shutdown` now calls `TBXR_ShutdownOpenXR()` before
+`VID_Shutdown()`, which is the right side of it because the swapchain images are
+textures in the GL context `VID_Shutdown` destroys. The wait is bounded at two
+seconds: trading a stray process for a hung quit would be worse.
+
+**The evidence is strong but the fix is unconfirmed.** Every zombie on this
+machine came from a run that created a session; every run that got no session
+exited and was reaped, including one after the fix. What has not been done is a
+run **with** a session after the fix, because that needs the headset streaming.
+That is the one thing to check. If a stray still appears, the next suspect is
+the runtime holding the handle irrespective of teardown - in which case the fix
+is still correct (an undestroyed session leaks runtime resources and can wedge
+the next app) but is not the whole story.
+
+To check, after quitting the game:
+
+```
+Get-CimInstance Win32_Process -Filter "Name='yquake2.exe'" | Select ProcessId,CreationDate
+```
+
+Nothing listed is the pass.
+
 ### 2. Snap turn throws the weapon to one side for a frame
 
 "The controller stays on one side of the screen for a split second and then
@@ -239,8 +283,11 @@ thing that differs there and is worth looking at first.
 
 ## What a headset session should check next
 
-1. **Does A skip the intro and the opening cutscene now?** Item 1 above.
-2. Then the things that have still never run in a headset, below - the game
+1. **Does a stray `yquake2.exe` still remain after quitting?** Item 5 above -
+   needs the headset streaming, since only a run that creates a session ever
+   left one. This is the one that has been costing build time.
+2. **Does A skip the intro and the opening cutscene now?** Item 1 above.
+3. Then the things that have still never run in a headset, below - the game
    select page and `relaunchgame` first, since that is the riskiest.
 
 Items 2 and 3 above should be **measured at the desk before he is asked
@@ -290,13 +337,13 @@ where there is no desktop and every menu is a flat panel by design.
 
 ## Traps that cost time
 
-**Running the game from the build tree leaves a hung `yquake2.exe` behind on
-every `quit`.** It releases its file handles but never exits, and
-`Stop-Process -Force` will not shift it. The next link then fails with
-`cannot open output file release\yquake2.exe: Permission denied`. Rename the exe
-out of the way and link again - Windows will rename a running image quite
-happily. Four accumulated over four runs this session; they have to be closed by
-hand.
+**A quit used to leave a `yquake2.exe` behind** that Task Manager would not show
+and that locked the exe against the next link, failing it with
+`cannot open output file release\yquake2.exe: Permission denied`. That was the
+never-called `TBXR_ShutdownOpenXR` - see item 5 above - and should now be gone.
+If it comes back, the workaround is to rename the exe out of the way and link
+again; Windows will rename a running image quite happily. `Stop-Process -Force`
+will not shift one of these, because the process has already exited.
 
 **Screenshot comparison cannot prove flatscreen is unchanged by equality.** Two
 runs with identical command lines are byte-identical, which makes the method
