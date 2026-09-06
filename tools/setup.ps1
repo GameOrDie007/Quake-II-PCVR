@@ -150,6 +150,33 @@ function Get-SteamLibraries {
     return $libs
 }
 
+function Test-Quake2Pak([string]$pak) {
+    # Quake 1's mission packs use the same folder names as Quake II's - rogue is
+    # Dissolution of Eternity there and Ground Zero here - so a search for
+    # 'rogue\pak0.pak' across a Steam library will find Quake 1 and hand back the
+    # wrong game's data. Quake 1 keeps its game logic in progs.dat inside the
+    # pak; Quake II keeps it in a DLL and has no such entry, which separates them
+    # in one read of the directory.
+    try {
+        $fs = [System.IO.File]::OpenRead($pak)
+        try {
+            $br = New-Object System.IO.BinaryReader($fs)
+            if ([System.Text.Encoding]::ASCII.GetString($br.ReadBytes(4)) -ne 'PACK') { return $false }
+            $ofs = $br.ReadInt32(); $len = $br.ReadInt32()
+            if ($ofs -le 0 -or $len -le 0 -or ($ofs + $len) -gt $fs.Length) { return $false }
+            $fs.Position = $ofs
+            for ($i = 0; $i -lt [int]($len / 64); $i++) {
+                $rec = $br.ReadBytes(64)
+                $z = [Array]::IndexOf($rec, [byte]0, 0, 56)
+                if ($z -lt 0) { $z = 56 }
+                $n = [System.Text.Encoding]::ASCII.GetString($rec, 0, $z).ToLower()
+                if ($n -eq 'progs.dat') { return $false }
+            }
+            return $true
+        } finally { $fs.Close() }
+    } catch { return $false }
+}
+
 function Get-Quake2Score([string]$path) {
     # How complete an install is, so the best one wins rather than the first one
     # found. Quake II RTX is the case that forced this: it is a different product
@@ -157,16 +184,26 @@ function Get-Quake2Score([string]$path) {
     # so a search that stops at the first hit can pick it over the real game and
     # then report that the expansions are not installed.
     $p0 = PathJoin $path 'baseq2\pak0.pak'
-    if (-not (Test-Path -PathType Leaf $p0)) { return -1 }
+    if (-not (Test-Path -PathType Leaf $p0)) {
+        $script:LastScoreWhy = 'no baseq2\pak0.pak'
+        return -1
+    }
 
     $score = 0
-    # The retail and remaster pak0 are about 184 MB. The demo and RTX ones are a
-    # fraction of that, which is the difference between the whole game and a
-    # sample of it.
-    if ((Get-Item $p0).Length -gt 100MB) { $score += 8 }
-    if (Test-Path -PathType Leaf (PathJoin $path 'xatrix\pak0.pak')) { $score += 4 }
-    if (Test-Path -PathType Leaf (PathJoin $path 'rogue\pak0.pak')) { $score += 4 }
-    if (Test-Path -PathType Container (PathJoin $path 'rerelease\baseq2\music')) { $score += 2 }
+    $why = New-Object System.Collections.ArrayList
+
+    # The retail and remaster pak0 are about 184 MB. A demo is a fraction of
+    # that, which is the difference between the whole game and a sample of it.
+    $mb = [int]((Get-Item $p0).Length / 1MB)
+    if ((Get-Item $p0).Length -gt 100MB) { $score += 8; [void]$why.Add("pak0 ${mb}MB") }
+    else { [void]$why.Add("pak0 only ${mb}MB") }
+
+    if (Test-Path -PathType Leaf (PathJoin $path 'xatrix\pak0.pak')) { $score += 4; [void]$why.Add('xatrix') }
+    if (Test-Path -PathType Leaf (PathJoin $path 'rogue\pak0.pak')) { $score += 4; [void]$why.Add('rogue') }
+    if (Test-Path -PathType Container (PathJoin $path 'rerelease\baseq2\music')) { $score += 2; [void]$why.Add('soundtrack') }
+    if (Test-Path -PathType Container (PathJoin $path 'baseq2\video')) { $score += 2; [void]$why.Add('movies') }
+
+    $script:LastScoreWhy = ($why -join ', ')
     return $score
 }
 
@@ -208,16 +245,21 @@ function Find-Quake2([string]$given) {
     $seen = @{}
     $script:Quake2Rejected = New-Object System.Collections.ArrayList
     $script:Quake2Extra = New-Object System.Collections.ArrayList
+    $script:Quake2Seen = New-Object System.Collections.ArrayList
 
     foreach ($c in $cands) {
         $key = $c.ToLower().TrimEnd('\')
         if ($seen.ContainsKey($key)) { continue }
         $seen[$key] = $true
         $sc = Get-Quake2Score $c
+        [void]$script:Quake2Seen.Add([pscustomobject]@{
+            Path = $c; Score = $sc; Why = $script:LastScoreWhy })
         if ($sc -lt 0) {
             # No baseq2, but it may still be an expansion on its own.
-            if ((Test-Path -PathType Leaf (PathJoin $c 'xatrix\pak0.pak')) -or
-                (Test-Path -PathType Leaf (PathJoin $c 'rogue\pak0.pak'))) {
+            $xp = PathJoin $c 'xatrix\pak0.pak'
+            $rp = PathJoin $c 'rogue\pak0.pak'
+            if (((Test-Path -PathType Leaf $xp) -and (Test-Quake2Pak $xp)) -or
+                ((Test-Path -PathType Leaf $rp) -and (Test-Quake2Pak $rp))) {
                 [void]$script:Quake2Extra.Add($c)
             }
             continue
@@ -419,12 +461,15 @@ if (-not $quake2) {
 }
 
 Write-Host ("Quake II found at " + $quake2)
-if ($script:Quake2Rejected -and $script:Quake2Rejected.Count -gt 0) {
-    # More than one thing on this machine looks like Quake II - say which was
-    # passed over, because picking the wrong one is silent otherwise and shows up
-    # much later as missing expansions.
-    Write-Host "  also seen, and less complete:"
-    foreach ($r in $script:Quake2Rejected) { Write-Host ("    " + $r) }
+if ($script:Quake2Seen -and $script:Quake2Seen.Count -gt 1) {
+    # Everything that looked like a Quake II install, with what it scored and
+    # why. Picking the wrong one is otherwise silent until the soundtrack or the
+    # cutscenes turn out to be missing, which is a long way from the cause.
+    Write-Host "  candidates:"
+    foreach ($c in ($script:Quake2Seen | Sort-Object -Property Score -Descending)) {
+        Write-Host ("    {0,4}  {1}" -f $c.Score, $c.Path)
+        Write-Host ("          " + $c.Why)
+    }
 }
 Write-Host ("Installing into  " + $dest)
 Write-Host ""
@@ -475,7 +520,13 @@ foreach ($x in $Expansions) {
     $from = $null
     foreach ($r in $roots) {
         $try = PathJoin $r ($x.Dir + '\pak0.pak')
-        if (Test-Path -PathType Leaf $try) { $pak = $try; $from = $r; break }
+        if (-not (Test-Path -PathType Leaf $try)) { continue }
+        if (-not (Test-Quake2Pak $try)) {
+            # Almost certainly Quake 1's pack of the same name.
+            Write-Host ("  ignoring " + $try + " - not Quake II data")
+            continue
+        }
+        $pak = $try; $from = $r; break
     }
     if (-not $pak) { continue }
 
