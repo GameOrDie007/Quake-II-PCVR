@@ -15,10 +15,12 @@
 param(
     [string]$InstallDir = ".",
     [string]$Quake2Dir = "",
-    # ask (default), yes, or no - whether to fetch Team Beef's HD assets from
-    # their own GitHub release when they are not already on this machine.
-    [ValidateSet('ask', 'yes', 'no')]
-    [string]$Extras = 'ask'
+    # Whether to fetch Team Beef's HD assets from their own GitHub release when
+    # they are not already on this machine. On by default and deliberately not a
+    # question: the release says this is what Setup does, so asking again only
+    # gives somebody a chance to answer wrongly and end up with a worse install.
+    [ValidateSet('yes', 'no')]
+    [string]$Extras = 'yes'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -148,6 +150,26 @@ function Get-SteamLibraries {
     return $libs
 }
 
+function Get-Quake2Score([string]$path) {
+    # How complete an install is, so the best one wins rather than the first one
+    # found. Quake II RTX is the case that forced this: it is a different product
+    # that ships demo content, and it has a baseq2\pak0.pak like everything else,
+    # so a search that stops at the first hit can pick it over the real game and
+    # then report that the expansions are not installed.
+    $p0 = PathJoin $path 'baseq2\pak0.pak'
+    if (-not (Test-Path -PathType Leaf $p0)) { return -1 }
+
+    $score = 0
+    # The retail and remaster pak0 are about 184 MB. The demo and RTX ones are a
+    # fraction of that, which is the difference between the whole game and a
+    # sample of it.
+    if ((Get-Item $p0).Length -gt 100MB) { $score += 8 }
+    if (Test-Path -PathType Leaf (PathJoin $path 'xatrix\pak0.pak')) { $score += 4 }
+    if (Test-Path -PathType Leaf (PathJoin $path 'rogue\pak0.pak')) { $score += 4 }
+    if (Test-Path -PathType Container (PathJoin $path 'rerelease\baseq2\music')) { $score += 2 }
+    return $score
+}
+
 function Find-Quake2([string]$given) {
     if ($given) {
         if (Test-Path -PathType Container $given) { return $given } else { return $null }
@@ -156,16 +178,16 @@ function Find-Quake2([string]$given) {
         return $env:Q2VR_QUAKEDIR
     }
 
-    # Steam, properly: every library it knows about, and every game folder in
-    # each - the folder name is not assumed, only that it holds baseq2/pak0.pak.
+    # Gather every candidate rather than stopping at the first, then take the
+    # most complete one.
+    $cands = New-Object System.Collections.ArrayList
+
     foreach ($lib in (Get-SteamLibraries)) {
         $common = PathJoin $lib 'steamapps\common'
         if (-not (Test-Path -PathType Container $common)) { continue }
         try { $dirs = Get-ChildItem -LiteralPath $common -Directory -ErrorAction SilentlyContinue }
         catch { continue }
-        foreach ($d in $dirs) {
-            if (Test-Quake2Dir $d.FullName) { return $d.FullName }
-        }
+        foreach ($d in $dirs) { [void]$cands.Add($d.FullName) }
     }
 
     # GOG records each game's folder under its own key.
@@ -174,16 +196,44 @@ function Find-Quake2([string]$given) {
         try { $keys = Get-ChildItem $k -ErrorAction SilentlyContinue } catch { continue }
         foreach ($g in $keys) {
             try { $v = Get-ItemProperty $g.PSPath -ErrorAction SilentlyContinue } catch { continue }
-            if ($v -and $v.path -and (Test-Quake2Dir $v.path)) { return $v.path }
+            if ($v -and $v.path) { [void]$cands.Add($v.path) }
         }
     }
 
-    # Finally the fixed guesses, which cover a hand-copied install.
-    foreach ($p in $Quake2Guesses) {
-        if (Test-Quake2Dir $p) { return $p }
+    # And the fixed guesses, which cover a hand-copied install.
+    foreach ($p in $Quake2Guesses) { [void]$cands.Add($p) }
+
+    $best = $null
+    $bestScore = -1
+    $seen = @{}
+    $script:Quake2Rejected = New-Object System.Collections.ArrayList
+    $script:Quake2Extra = New-Object System.Collections.ArrayList
+
+    foreach ($c in $cands) {
+        $key = $c.ToLower().TrimEnd('\')
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
+        $sc = Get-Quake2Score $c
+        if ($sc -lt 0) {
+            # No baseq2, but it may still be an expansion on its own.
+            if ((Test-Path -PathType Leaf (PathJoin $c 'xatrix\pak0.pak')) -or
+                (Test-Path -PathType Leaf (PathJoin $c 'rogue\pak0.pak'))) {
+                [void]$script:Quake2Extra.Add($c)
+            }
+            continue
+        }
+        [void]$script:Quake2Extra.Add($c)
+        if ($sc -gt $bestScore) {
+            if ($best) { [void]$script:Quake2Rejected.Add($best) }
+            $best = $c
+            $bestScore = $sc
+        } else {
+            [void]$script:Quake2Rejected.Add($c)
+        }
     }
 
-    return $null
+    $script:Quake2Score = $bestScore
+    return $best
 }
 
 function Copy-IfNeeded([string]$src, [string]$dst, [string]$label) {
@@ -369,6 +419,13 @@ if (-not $quake2) {
 }
 
 Write-Host ("Quake II found at " + $quake2)
+if ($script:Quake2Rejected -and $script:Quake2Rejected.Count -gt 0) {
+    # More than one thing on this machine looks like Quake II - say which was
+    # passed over, because picking the wrong one is silent otherwise and shows up
+    # much later as missing expansions.
+    Write-Host "  also seen, and less complete:"
+    foreach ($r in $script:Quake2Rejected) { Write-Host ("    " + $r) }
+}
 Write-Host ("Installing into  " + $dest)
 Write-Host ""
 
@@ -405,14 +462,29 @@ if (Test-Path -PathType Container $musicSrc) {
 # The expansions.
 $installed = New-Object System.Collections.ArrayList
 foreach ($x in $Expansions) {
-    $pak = PathJoin $quake2 ($x.Dir + '\pak0.pak')
-    if (-not (Test-Path -PathType Leaf $pak)) { continue }
+    # The chosen install first, then any other folder that held game data. Steam
+    # has sold the mission packs both inside Quake II and as their own products,
+    # and in the second case they are in a different folder entirely.
+    $roots = New-Object System.Collections.ArrayList
+    [void]$roots.Add($quake2)
+    if ($script:Quake2Extra) {
+        foreach ($e in $script:Quake2Extra) { if ($e -ne $quake2) { [void]$roots.Add($e) } }
+    }
+
+    $pak = $null
+    $from = $null
+    foreach ($r in $roots) {
+        $try = PathJoin $r ($x.Dir + '\pak0.pak')
+        if (Test-Path -PathType Leaf $try) { $pak = $try; $from = $r; break }
+    }
+    if (-not $pak) { continue }
 
     Write-Host $x.Title
+    if ($from -ne $quake2) { Write-Host ("    from " + $from) }
     $target = PathJoin $dest $x.Dir
     [void](New-Item -ItemType Directory -Force (PathJoin $target 'save'))
     [void](Copy-IfNeeded $pak (PathJoin $target 'pak0.pak') 'pak0.pak')
-    [void](Copy-TreeFlat (PathJoin $quake2 ($x.Dir + '\video')) (PathJoin $target 'video'))
+    [void](Copy-TreeFlat (PathJoin $from ($x.Dir + '\video')) (PathJoin $target 'video'))
     Write-Autoexec (PathJoin $target 'autoexec.cfg') $x.Title $x.Extra
     Write-WeaponsStub (PathJoin $target 'weapons.cfg')
     Write-DefaultConfig (PathJoin $target 'config.cfg')
@@ -443,24 +515,7 @@ foreach ($name in $ExtraFiles) {
 # this machine always beats a download.
 $stillMissing = @($ExtraFiles | Where-Object { $found -notcontains $_ })
 if ($stillMissing.Count -gt 0 -and $Extras -ne 'no') {
-    $go = ($Extras -eq 'yes')
-    if (-not $go) {
-        Write-Host ""
-        Write-Host "Team Beef's HD weapon models and world textures are not on this"
-        Write-Host "machine. They are published on their own GitHub and can be"
-        Write-Host "fetched now - about 169 MB, once. Without them the game plays"
-        Write-Host "the same with Quake II's own artwork."
-        try {
-            $answer = Read-Host "Download them? [Y/n]"
-            $go = ($answer -eq '' -or $answer -match '^[Yy]')
-        } catch {
-            # Not an interactive console - do not hang waiting for an answer.
-            $go = $false
-        }
-    }
-    if ($go) {
-        foreach ($n in (Get-ExtrasFromTeamBeef $baseDst $stillMissing)) { [void]$found.Add($n) }
-    }
+    foreach ($n in (Get-ExtrasFromTeamBeef $baseDst $stillMissing)) { [void]$found.Add($n) }
 }
 if ($found -contains 'pak6.pak') {
     $auto = PathJoin $baseDst 'autoexec.cfg'
