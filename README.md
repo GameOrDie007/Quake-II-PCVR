@@ -122,9 +122,14 @@ A release is binaries and a script - about 16MB, with no game data in it.
 
 Setup finds your Quake II install, copies the game, whichever expansions you
 own and the soundtrack out of it, and builds the weapon wheel artwork from
-the same data. Nothing is downloaded and nothing leaves your machine. It
-needs Python 3, and Pillow as well for the artwork - it will say so if either
-is missing, and the game still runs without them.
+the same data. Nothing is downloaded, nothing leaves your machine, and there
+is nothing to install first: it runs on the PowerShell that ships with
+Windows.
+
+`tools/setup.py` and `tools/make-wheel-icons.py` are the same job in Python and
+are what the repository uses to build a release. The two are kept in step by
+running both and comparing what they produce - every generated file byte for
+byte, and all 80 wheel images pixel by pixel.
 
 If Setup cannot find Quake II, set `Q2VR_QUAKEDIR` to the folder holding
 `baseq2` and run it again, or copy the paks in by hand and run it again to do

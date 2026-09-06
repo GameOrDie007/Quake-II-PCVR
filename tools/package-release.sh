@@ -66,6 +66,7 @@ for pack in baseq2 xatrix rogue; do
 done
 
 # --- Setup, and what it needs ----------------------------------------------
+cp -f "$REPO/tools/setup.ps1" "$REPO/tools/wheel-art.ps1" "$DEST/tools/"
 cp -f "$REPO/tools/setup.py" "$REPO/tools/make-wheel-icons.py" "$DEST/tools/"
 cp -f "$REPO/tools/Setup.bat" "$DEST/"
 
@@ -109,9 +110,9 @@ Quake II VR - PCVR port of Team Beef's Quake2Quest
 
 1. Run "Setup.bat" once. It finds your Quake II install, copies the game, the
    expansions you own and the soundtrack out of it, and builds the weapon wheel
-   artwork from the same data. Nothing is downloaded and nothing leaves your
-   machine. It needs Python 3, and Pillow for the artwork - it will say so if
-   either is missing.
+   artwork from the same data. Nothing is downloaded, nothing leaves your
+   machine, and nothing has to be installed first - it runs on the PowerShell
+   that comes with Windows.
 
 2. Start Virtual Desktop on the headset and connect it to the PC, so that VDXR
    is the running OpenXR runtime.

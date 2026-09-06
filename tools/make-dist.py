@@ -43,7 +43,7 @@ TOP_ALLOWED = {
     "Setup.bat", "README.txt", "LICENSE", "LICENSE.txt",
 }
 
-TOOLS_ALLOWED_EXT = {".py", ".txt", ".sh"}
+TOOLS_ALLOWED_EXT = {".py", ".ps1", ".txt", ".sh"}
 
 
 def audit(root):
