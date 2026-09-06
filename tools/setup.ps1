@@ -14,7 +14,11 @@
 
 param(
     [string]$InstallDir = ".",
-    [string]$Quake2Dir = ""
+    [string]$Quake2Dir = "",
+    # ask (default), yes, or no - whether to fetch Team Beef's HD assets from
+    # their own GitHub release when they are not already on this machine.
+    [ValidateSet('ask', 'yes', 'no')]
+    [string]$Extras = 'ask'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -76,7 +80,22 @@ $TeamBeefConfig = @(
     @("gl1_stencilshadow", "1")
 )
 
-$Extras = @("pak6.pak", "pak99.pak", "vignette.tga")
+$ExtraFiles = @("pak6.pak", "pak99.pak", "vignette.tga")
+
+# Team Beef publish their Quest build on their own GitHub, and the APK is a zip
+# with these three inside it. Fetching from there rather than carrying them here
+# keeps the download off our release entirely - we host nothing, so the archive
+# stays 6 MB and there is no question about what is in it.
+#
+# The sizes and hashes are what the v1.0.9 APK holds, checked against the copies
+# the port was built and tuned against. A mismatch means the release moved and
+# is a thing to look at rather than to install.
+$ExtrasUrl = 'https://github.com/DrBeef/Quake2Quest/releases/download/v1.0.9/quake2quest-v1.0.9.apk'
+$ExtrasInApk = @{
+    'pak6.pak'     = @{ Entry = 'assets/pak6.pak';     Size = 147653659; Sha = '7B29585E98EA522E7354E444E9A6D94527B736BB700465FCE1C88B01BE0548B8' }
+    'pak99.pak'    = @{ Entry = 'assets/pak99.pak';    Size = 38862521;  Sha = 'B9DCF90E6A17A4BA11A975339DAA14B1BC9AD44470D73D7EA995B007C7D51B2F' }
+    'vignette.tga' = @{ Entry = 'assets/vignette.tga'; Size = 801517;    Sha = 'D2AB24B4451EBA2F16B49FBEF8702D390526319971BD749DB8DC89567211BCC4' }
+}
 
 function Write-TextCrLf([string]$path, [string[]]$lines) {
     # ASCII with CRLF, matching what setup.py writes byte for byte. ASCII has no
@@ -255,6 +274,68 @@ function Write-DefaultConfig([string]$path) {
     Write-TextCrLf $path $lines.ToArray()
 }
 
+function Get-ExtrasFromTeamBeef([string]$baseDst, $missing) {
+    # Their APK, from their own release page, unpacked on this machine. Nothing
+    # is redistributed by us and nothing is kept afterwards but the three files.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    # PowerShell 5.1 still defaults to TLS 1.0, which GitHub refuses.
+    try {
+        [Net.ServicePointManager]::SecurityProtocol =
+            [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    } catch { }
+
+    $tmp = [System.IO.Path]::Combine($env:TEMP, 'q2vr-teambeef.apk')
+    Write-Host ""
+    Write-Host "  Downloading Team Beef's assets from their GitHub release."
+    Write-Host "  About 169 MB. This happens once."
+    Write-Host ("  " + $ExtrasUrl)
+
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add('User-Agent', 'Quake2VR-PCVR-Setup')
+        $wc.DownloadFile($ExtrasUrl, $tmp)
+        $wc.Dispose()
+    } catch {
+        Write-Host ("  download failed: " + $_.Exception.Message)
+        Write-Host "  The game plays without these - retail artwork instead."
+        if (Test-Path $tmp) { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+        return @()
+    }
+
+    $got = New-Object System.Collections.ArrayList
+    try {
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($tmp)
+        try {
+            foreach ($name in $missing) {
+                $spec = $ExtrasInApk[$name]
+                if (-not $spec) { continue }
+                $e = $zip.Entries | Where-Object { $_.FullName -eq $spec.Entry } | Select-Object -First 1
+                if (-not $e) {
+                    Write-Host ("    " + $name + ": not in the APK - it may have moved")
+                    continue
+                }
+                $out = [System.IO.Path]::Combine($baseDst, $name)
+                [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $out, $true)
+
+                $h = (Get-FileHash -Algorithm SHA256 -LiteralPath $out).Hash
+                if ($h -ne $spec.Sha) {
+                    Write-Host ("    " + $name + ": does not match what was expected - discarded")
+                    Remove-Item $out -Force -ErrorAction SilentlyContinue
+                    continue
+                }
+                Write-Host ("    " + $name + " ok")
+                [void]$got.Add($name)
+            }
+        } finally { $zip.Dispose() }
+    } catch {
+        Write-Host ("  could not read the APK: " + $_.Exception.Message)
+    }
+
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    return $got
+}
+
 function Write-Launcher([string]$path, [string]$extraArgs) {
     # CRLF, no trailing newline beyond the one, matching setup.py exactly.
     $text = "@echo off`r`nstart `"`" `"%~dp0yquake2.exe`" -portable$extraArgs`r`n"
@@ -350,11 +431,35 @@ Write-Launcher (PathJoin $dest 'Play Quake II VR.bat') ''
 $extrasSrc = $env:Q2VR_TBDIR
 if (-not $extrasSrc) { $extrasSrc = PathJoin $dest 'extras' }
 $found = New-Object System.Collections.ArrayList
-foreach ($name in $Extras) {
+foreach ($name in $ExtraFiles) {
     if (Test-Path -PathType Leaf (PathJoin $baseDst $name)) {
         [void]$found.Add($name)
     } elseif (Copy-IfNeeded (PathJoin $extrasSrc $name) (PathJoin $baseDst $name) $name) {
         [void]$found.Add($name)
+    }
+}
+
+# Only what is still missing, and only after looking locally - a copy already on
+# this machine always beats a download.
+$stillMissing = @($ExtraFiles | Where-Object { $found -notcontains $_ })
+if ($stillMissing.Count -gt 0 -and $Extras -ne 'no') {
+    $go = ($Extras -eq 'yes')
+    if (-not $go) {
+        Write-Host ""
+        Write-Host "Team Beef's HD weapon models and world textures are not on this"
+        Write-Host "machine. They are published on their own GitHub and can be"
+        Write-Host "fetched now - about 169 MB, once. Without them the game plays"
+        Write-Host "the same with Quake II's own artwork."
+        try {
+            $answer = Read-Host "Download them? [Y/n]"
+            $go = ($answer -eq '' -or $answer -match '^[Yy]')
+        } catch {
+            # Not an interactive console - do not hang waiting for an answer.
+            $go = $false
+        }
+    }
+    if ($go) {
+        foreach ($n in (Get-ExtrasFromTeamBeef $baseDst $stillMissing)) { [void]$found.Add($n) }
     }
 }
 if ($found -contains 'pak6.pak') {
@@ -381,7 +486,7 @@ if ($installed.Count -gt 0) {
     Write-Host "  install them from Steam and run this again."
 }
 
-$missing = @($Extras | Where-Object { $found -notcontains $_ })
+$missing = @($ExtraFiles | Where-Object { $found -notcontains $_ })
 if ($missing.Count -gt 0) {
     Write-Host ""
     Write-Host ("  Team Beef's extras are not here: " + ($missing -join ', '))
