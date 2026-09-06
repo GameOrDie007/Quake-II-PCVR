@@ -14,6 +14,18 @@
 
 Add-Type -AssemblyName System.Drawing
 
+function PathJoin([string]$a, [string]$b) {
+    # Deliberately not Join-Path. That is a provider cmdlet: it validates the
+    # drive and throws DriveNotFoundException for a path on a drive this machine
+    # does not have. The install guesses are full of exactly that - D: and E:
+    # exist on the machine this was written on and not on the one it was tested
+    # on, where Setup died on the first guess it could not resolve.
+    #
+    # This was ported from Python, where os.path.join is pure string handling and
+    # never touches the filesystem. Combine is the equivalent; Join-Path is not.
+    return [System.IO.Path]::Combine($a, $b)
+}
+
 # An image here is width, height and a BGRA byte array, which is the order
 # System.Drawing wants in memory. Pillow works in RGBA, so anything lifted from
 # the Python has its channels swapped on the way in and out.
@@ -153,7 +165,6 @@ function Remove-IconFrame($img, [int]$tolerance = 12) {
             $border["$($img.P[$o]),$($img.P[$o+1]),$($img.P[$o+2])"] = $true
         }
     }
-    $keys = @($border.Keys | ForEach-Object { $_.Split(',') | ForEach-Object { [int]$_ } })
     # Flatten to a list of triples for the comparison below.
     $tris = New-Object System.Collections.ArrayList
     foreach ($k in $border.Keys) {
@@ -267,8 +278,8 @@ function Get-WantedIcons([string]$manifest) {
 
 function Build-WheelArt([string]$quake2Dir, [string]$installDir, [string]$manifest) {
     $wanted = Get-WantedIcons $manifest
-    $tbWheel = Join-Path $installDir 'baseq2\wheel'
-    $basePak = Join-Path $quake2Dir 'baseq2\pak0.pak'
+    $tbWheel = PathJoin $installDir 'baseq2\wheel'
+    $basePak = PathJoin $quake2Dir 'baseq2\pak0.pak'
     $baseIndex = $null
     if (Test-Path $basePak) { $baseIndex = Get-PakIndex $basePak }
 
@@ -285,7 +296,7 @@ function Build-WheelArt([string]$quake2Dir, [string]$installDir, [string]$manife
             }
         }
 
-        $packPak = Join-Path $quake2Dir "$pack\pak0.pak"
+        $packPak = PathJoin $quake2Dir "$pack\pak0.pak"
         if (-not (Test-Path $packPak)) { continue }
 
         # The ring and the cursor are not game art and cannot be extracted, so
@@ -294,7 +305,7 @@ function Build-WheelArt([string]$quake2Dir, [string]$installDir, [string]$manife
         if ($pack -eq 'baseq2') {
             [void](New-Item -ItemType Directory -Force $tbWheel)
             foreach ($pair in @(@('ring', 'New-Ring'), @('cursor', 'New-Cursor'))) {
-                $target = Join-Path $tbWheel ($pair[0] + '.png')
+                $target = PathJoin $tbWheel ($pair[0] + '.png')
                 if (-not (Test-Path $target)) {
                     Save-Img (& $pair[1]) $target
                     Write-Host ("    drew " + $pair[0] + ".png")
@@ -304,7 +315,7 @@ function Build-WheelArt([string]$quake2Dir, [string]$installDir, [string]$manife
         }
 
         $index = Get-PakIndex $packPak
-        $outDir = Join-Path $installDir "$pack\wheel"
+        $outDir = PathJoin $installDir "$pack\wheel"
         [void](New-Item -ItemType Directory -Force $outDir)
 
         $written = 0
@@ -312,7 +323,7 @@ function Build-WheelArt([string]$quake2Dir, [string]$installDir, [string]$manife
         foreach ($name in $wanted[$pack]) {
             $already = $have.ContainsKey($name)
             if ($already -and -not ($pack -eq 'baseq2' -and
-                    -not (Test-Path (Join-Path $outDir "$name.png")))) {
+                    -not (Test-Path (PathJoin $outDir "$name.png")))) {
                 continue
             }
 
@@ -326,8 +337,8 @@ function Build-WheelArt([string]$quake2Dir, [string]$installDir, [string]$manife
             if ($null -eq $data) { [void]$missing.Add($name); continue }
 
             $icon = Remove-IconFrame (ConvertFrom-Pcx $data)
-            Save-Img $icon (Join-Path $outDir "$name.png")
-            Save-Img (New-SelectedVariant $icon) (Join-Path $outDir "${name}_selected.png")
+            Save-Img $icon (PathJoin $outDir "$name.png")
+            Save-Img (New-SelectedVariant $icon) (PathJoin $outDir "${name}_selected.png")
             $written++
             $total += 2
         }

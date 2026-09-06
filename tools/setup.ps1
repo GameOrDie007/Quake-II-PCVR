@@ -19,7 +19,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-. (Join-Path $here 'wheel-art.ps1')
+. ([System.IO.Path]::Combine($here, 'wheel-art.ps1'))
 
 $Quake2Guesses = @(
     "C:\Program Files (x86)\Steam\steamapps\common\Quake 2",
@@ -91,7 +91,7 @@ function Find-Quake2([string]$given) {
         return $env:Q2VR_QUAKEDIR
     }
     foreach ($p in $Quake2Guesses) {
-        if (Test-Path -PathType Leaf (Join-Path $p 'baseq2\pak0.pak')) { return $p }
+        if (Test-Path -PathType Leaf (PathJoin $p 'baseq2\pak0.pak')) { return $p }
     }
     return $null
 }
@@ -111,7 +111,7 @@ function Copy-TreeFlat([string]$src, [string]$dst) {
     if (-not (Test-Path -PathType Container $src)) { return $false }
     [void](New-Item -ItemType Directory -Force $dst)
     foreach ($f in Get-ChildItem -LiteralPath $src -File) {
-        [void](Copy-IfNeeded $f.FullName (Join-Path $dst $f.Name) $null)
+        [void](Copy-IfNeeded $f.FullName (PathJoin $dst $f.Name) $null)
     }
     return $true
 }
@@ -209,26 +209,26 @@ Write-Host ("Installing into  " + $dest)
 Write-Host ""
 
 # Quake II itself.
-$baseSrc = Join-Path $quake2 'baseq2'
-$baseDst = Join-Path $dest 'baseq2'
-[void](New-Item -ItemType Directory -Force (Join-Path $baseDst 'save'))
+$baseSrc = PathJoin $quake2 'baseq2'
+$baseDst = PathJoin $dest 'baseq2'
+[void](New-Item -ItemType Directory -Force (PathJoin $baseDst 'save'))
 Write-Host "Quake II"
 
-if (-not (Copy-IfNeeded (Join-Path $baseSrc 'pak0.pak') (Join-Path $baseDst 'pak0.pak') 'pak0.pak')) {
+if (-not (Copy-IfNeeded (PathJoin $baseSrc 'pak0.pak') (PathJoin $baseDst 'pak0.pak') 'pak0.pak')) {
     Write-Host ("  no baseq2/pak0.pak under " + $quake2)
     exit 1
 }
 foreach ($n in @('pak1.pak', 'pak2.pak', 'maps.lst')) {
-    [void](Copy-IfNeeded (Join-Path $baseSrc $n) (Join-Path $baseDst $n) $n)
+    [void](Copy-IfNeeded (PathJoin $baseSrc $n) (PathJoin $baseDst $n) $n)
 }
 foreach ($sub in @('video', 'players')) {
-    [void](Copy-TreeFlat (Join-Path $baseSrc $sub) (Join-Path $baseDst $sub))
+    [void](Copy-TreeFlat (PathJoin $baseSrc $sub) (PathJoin $baseDst $sub))
 }
 
 # The soundtrack. Retail Quake II played it off the CD and no download has it;
 # the 2023 remaster ships the same tracks and comes with the Steam release.
-$musicSrc = Join-Path $quake2 'rerelease\baseq2\music'
-$musicDst = Join-Path $baseDst 'music'
+$musicSrc = PathJoin $quake2 'rerelease\baseq2\music'
+$musicDst = PathJoin $baseDst 'music'
 if (Test-Path -PathType Container $musicSrc) {
     [void](Copy-TreeFlat $musicSrc $musicDst)
     $n = (Get-ChildItem $musicDst -File).Count
@@ -241,48 +241,48 @@ if (Test-Path -PathType Container $musicSrc) {
 # The expansions.
 $installed = New-Object System.Collections.ArrayList
 foreach ($x in $Expansions) {
-    $pak = Join-Path $quake2 ($x.Dir + '\pak0.pak')
+    $pak = PathJoin $quake2 ($x.Dir + '\pak0.pak')
     if (-not (Test-Path -PathType Leaf $pak)) { continue }
 
     Write-Host $x.Title
-    $target = Join-Path $dest $x.Dir
-    [void](New-Item -ItemType Directory -Force (Join-Path $target 'save'))
-    [void](Copy-IfNeeded $pak (Join-Path $target 'pak0.pak') 'pak0.pak')
-    [void](Copy-TreeFlat (Join-Path $quake2 ($x.Dir + '\video')) (Join-Path $target 'video'))
-    Write-Autoexec (Join-Path $target 'autoexec.cfg') $x.Title $x.Extra
-    Write-WeaponsStub (Join-Path $target 'weapons.cfg')
-    Write-DefaultConfig (Join-Path $target 'config.cfg')
-    Write-Launcher (Join-Path $dest ('Play ' + $x.Title + ' VR.bat')) (' +set game ' + $x.Dir)
+    $target = PathJoin $dest $x.Dir
+    [void](New-Item -ItemType Directory -Force (PathJoin $target 'save'))
+    [void](Copy-IfNeeded $pak (PathJoin $target 'pak0.pak') 'pak0.pak')
+    [void](Copy-TreeFlat (PathJoin $quake2 ($x.Dir + '\video')) (PathJoin $target 'video'))
+    Write-Autoexec (PathJoin $target 'autoexec.cfg') $x.Title $x.Extra
+    Write-WeaponsStub (PathJoin $target 'weapons.cfg')
+    Write-DefaultConfig (PathJoin $target 'config.cfg')
+    Write-Launcher (PathJoin $dest ('Play ' + $x.Title + ' VR.bat')) (' +set game ' + $x.Dir)
     [void]$installed.Add($x.Title)
 }
 
-Write-Autoexec (Join-Path $baseDst 'autoexec.cfg') 'Quake II' $null
-Write-WeaponsStub (Join-Path $baseDst 'weapons.cfg')
-Write-DefaultConfig (Join-Path $baseDst 'config.cfg')
-Write-Launcher (Join-Path $dest 'Play Quake II VR.bat') ''
+Write-Autoexec (PathJoin $baseDst 'autoexec.cfg') 'Quake II' $null
+Write-WeaponsStub (PathJoin $baseDst 'weapons.cfg')
+Write-DefaultConfig (PathJoin $baseDst 'config.cfg')
+Write-Launcher (PathJoin $dest 'Play Quake II VR.bat') ''
 
 # Team Beef's own assets, if the owner has their standalone. None of it is
 # redistributable and none of it is in a Quake II install, so it is picked up
 # only if it is already here or Q2VR_TBDIR points at it.
 $extrasSrc = $env:Q2VR_TBDIR
-if (-not $extrasSrc) { $extrasSrc = Join-Path $dest 'extras' }
+if (-not $extrasSrc) { $extrasSrc = PathJoin $dest 'extras' }
 $found = New-Object System.Collections.ArrayList
 foreach ($name in $Extras) {
-    if (Test-Path -PathType Leaf (Join-Path $baseDst $name)) {
+    if (Test-Path -PathType Leaf (PathJoin $baseDst $name)) {
         [void]$found.Add($name)
-    } elseif (Copy-IfNeeded (Join-Path $extrasSrc $name) (Join-Path $baseDst $name) $name) {
+    } elseif (Copy-IfNeeded (PathJoin $extrasSrc $name) (PathJoin $baseDst $name) $name) {
         [void]$found.Add($name)
     }
 }
 if ($found -contains 'pak6.pak') {
-    $auto = Join-Path $baseDst 'autoexec.cfg'
+    $auto = PathJoin $baseDst 'autoexec.cfg'
     $add = "`r`n// pak6 is inert without this.`r`nset gl_retexturing `"1`"`r`n"
     [System.IO.File]::AppendAllText($auto, $add, [System.Text.Encoding]::ASCII)
 }
 
 Write-Host "Menu artwork"
 try {
-    Build-WheelArt $quake2 $dest (Join-Path $here 'wheel-icons.txt')
+    Build-WheelArt $quake2 $dest (PathJoin $here 'wheel-icons.txt')
 } catch {
     Write-Host ("  could not build the weapon wheel icons: " + $_.Exception.Message)
     Write-Host "  The game still runs; the wheel will have blank slices."
