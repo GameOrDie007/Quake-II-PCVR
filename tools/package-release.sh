@@ -110,8 +110,9 @@ Quake II VR - PCVR port of Team Beef's Quake2Quest
 
 1. Run "Setup.bat" once. It finds your Quake II install, copies the game, the
    expansions you own and the soundtrack out of it, and builds the weapon wheel
-   artwork from the same data. Nothing is downloaded, nothing leaves your
-   machine, and nothing has to be installed first - it runs on the PowerShell
+   artwork from the same data. It also fetches Team Beef's HD weapon models and
+   world textures from their own GitHub release, with their permission - about
+   169 MB, once. Nothing has to be installed first: it runs on the PowerShell
    that comes with Windows.
 
 2. Start Virtual Desktop on the headset and connect it to the PC, so that VDXR
