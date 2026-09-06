@@ -155,17 +155,19 @@ when you switch.
 Team Beef's standalone is base Quake II only, so the VR side of the expansions
 is their work applied to code they never shipped. Two things to expect:
 
-- The nine weapons the expansions add sit where the engine's default offset puts
-  them, not where a tuned value would. Everything they share with Quake II keeps
-  Team Beef's own numbers. To adjust one, at the console:
+- Six of the weapons the expansions add sit where the engine's default offset
+  puts them, not where a tuned value would: the Ionripper and Phalanx in The
+  Reckoning, and the Disruptor, ETF Rifle, Plasma Beam and Chainfist in Ground
+  Zero. Everything they share with Quake II keeps Team Beef's own numbers, and
+  so does the Prox Launcher - it uses the Grenade Launcher's model, so their
+  value for that one is already right.
 
-      set vr_weapon_adjustment_13 "10.0,7.0,-8.0,-3.0,0.0,0.0"
-
-  which is back, left, up, pitch, yaw, roll. Each expansion's autoexec.cfg
-  lists its own weapons by number.
-
-- Ground Zero's Plasma Beam is drawn from the head rather than the gun. What it
-  hits is correct; where the beam appears to start is not, yet.
+  To fix one by eye: Options - PC Options - weapon alignment turns on a readout
+  for whatever is in your hand, adjusted with the off hand's stick and the grip
+  held for finer steps. Then "vrweapon save" at the console writes the result to
+  that game's weapons.cfg, which Setup never overwrites. The values are back,
+  left, up, pitch, yaw and roll, and each expansion's autoexec.cfg lists its own
+  weapons by number if you would rather type them.
 
 The 2023 remaster's extra episodes - Call of the Machine, Quake II 64 - are not
 here and cannot be: they need the remaster's own engine.
@@ -182,6 +184,18 @@ Notes
 - Multisampling and vsync are hidden from the video menu while in VR. Both need
   a video restart, which would drop the headset session, and neither affects
   what the headset sees.
+
+Known issues
+------------
+
+- On a Quest 2, the id logo, the opening cutscene and the first menu show double.
+  A Quest 3 is fine on the same build. Not yet understood.
+- The id logo movie at startup is dismissed with the menu button. Any other
+  button skips a cutscene once you are in a level, but not that one - it plays
+  before there is a game running to skip.
+- The picture is slightly darker than Team Beef's standalone. Engine brightness
+  is provably identical, so the remaining difference is most likely Virtual
+  Desktop's own encode and decode. Its colour settings are the place to look.
 README
 
 echo

@@ -7,3 +7,7 @@ build-mingw/
 
 # Team Beef asset pak - game data, never commit
 *.pak
+
+# Python bytecode from the tools
+__pycache__/
+*.pyc
