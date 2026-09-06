@@ -85,14 +85,85 @@ function Write-TextCrLf([string]$path, [string[]]$lines) {
     [System.IO.File]::WriteAllText($path, $text, [System.Text.Encoding]::ASCII)
 }
 
+function Test-Quake2Dir([string]$path) {
+    if (-not $path) { return $false }
+    try { return (Test-Path -PathType Leaf (PathJoin $path 'baseq2\pak0.pak')) }
+    catch { return $false }
+}
+
+function Get-SteamLibraries {
+    # Ask Steam where its libraries are rather than guessing drive letters. A
+    # hardcoded list only ever finds the machine it was written on: it worked
+    # here and found nothing on the first PC it was tried on, which had Steam in
+    # a library the list did not name.
+    $roots = New-Object System.Collections.ArrayList
+
+    foreach ($k in @('HKCU:\Software\Valve\Steam',
+                     'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam',
+                     'HKLM:\SOFTWARE\Valve\Steam')) {
+        try {
+            $v = Get-ItemProperty $k -ErrorAction SilentlyContinue
+        } catch { continue }
+        if (-not $v) { continue }
+        foreach ($p in @($v.SteamPath, $v.InstallPath)) {
+            # SteamPath comes back lowercase with forward slashes.
+            if ($p) { [void]$roots.Add(($p -replace '/', '\')) }
+        }
+    }
+
+    $libs = New-Object System.Collections.ArrayList
+    foreach ($root in $roots) {
+        if (-not (Test-Path -PathType Container $root)) { continue }
+        if ($libs -notcontains $root) { [void]$libs.Add($root) }
+
+        # Every library folder, including ones on other drives, is listed here.
+        $vdf = PathJoin $root 'steamapps\libraryfolders.vdf'
+        if (-not (Test-Path -PathType Leaf $vdf)) { continue }
+        foreach ($line in [System.IO.File]::ReadAllLines($vdf)) {
+            $m = [regex]::Match($line, '"path"\s+"(.+?)"')
+            if (-not $m.Success) { continue }
+            $lib = $m.Groups[1].Value -replace '\\\\', '\'
+            if ($libs -notcontains $lib) { [void]$libs.Add($lib) }
+        }
+    }
+    return $libs
+}
+
 function Find-Quake2([string]$given) {
-    if ($given) { if (Test-Path -PathType Container $given) { return $given } else { return $null } }
+    if ($given) {
+        if (Test-Path -PathType Container $given) { return $given } else { return $null }
+    }
     if ($env:Q2VR_QUAKEDIR -and (Test-Path -PathType Container $env:Q2VR_QUAKEDIR)) {
         return $env:Q2VR_QUAKEDIR
     }
-    foreach ($p in $Quake2Guesses) {
-        if (Test-Path -PathType Leaf (PathJoin $p 'baseq2\pak0.pak')) { return $p }
+
+    # Steam, properly: every library it knows about, and every game folder in
+    # each - the folder name is not assumed, only that it holds baseq2/pak0.pak.
+    foreach ($lib in (Get-SteamLibraries)) {
+        $common = PathJoin $lib 'steamapps\common'
+        if (-not (Test-Path -PathType Container $common)) { continue }
+        try { $dirs = Get-ChildItem -LiteralPath $common -Directory -ErrorAction SilentlyContinue }
+        catch { continue }
+        foreach ($d in $dirs) {
+            if (Test-Quake2Dir $d.FullName) { return $d.FullName }
+        }
     }
+
+    # GOG records each game's folder under its own key.
+    foreach ($k in @('HKLM:\SOFTWARE\WOW6432Node\GOG.com\Games',
+                     'HKLM:\SOFTWARE\GOG.com\Games')) {
+        try { $keys = Get-ChildItem $k -ErrorAction SilentlyContinue } catch { continue }
+        foreach ($g in $keys) {
+            try { $v = Get-ItemProperty $g.PSPath -ErrorAction SilentlyContinue } catch { continue }
+            if ($v -and $v.path -and (Test-Quake2Dir $v.path)) { return $v.path }
+        }
+    }
+
+    # Finally the fixed guesses, which cover a hand-copied install.
+    foreach ($p in $Quake2Guesses) {
+        if (Test-Quake2Dir $p) { return $p }
+    }
+
     return $null
 }
 
@@ -198,9 +269,21 @@ $quake2 = Find-Quake2 $Quake2Dir
 if (-not $quake2) {
     Write-Host "Could not find Quake II."
     Write-Host ""
-    Write-Host "Set Q2VR_QUAKEDIR to the folder that holds baseq2, or copy"
-    Write-Host "pak0.pak, pak1.pak and pak2.pak into baseq2 by hand and run this"
-    Write-Host "again to do the rest."
+    $libs = @(Get-SteamLibraries)
+    if ($libs.Count -gt 0) {
+        Write-Host "Steam libraries searched:"
+        foreach ($l in $libs) { Write-Host ("  " + $l) }
+    } else {
+        Write-Host "No Steam installation was found in the registry."
+    }
+    Write-Host ""
+    Write-Host "If Quake II is somewhere else, point this at the folder that"
+    Write-Host "holds baseq2 and run it again - for example:"
+    Write-Host ""
+    Write-Host "  set Q2VR_QUAKEDIR=D:\Games\Quake 2"
+    Write-Host "  Setup.bat"
+    Write-Host ""
+    Write-Host "The folder wanted is the one containing baseq2\pak0.pak."
     exit 1
 }
 
