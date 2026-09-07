@@ -780,8 +780,14 @@ CL_BeginFrame(int packetdelta, int renderdelta, int timedelta, qboolean packetfr
 	 */
 	{
 		static qboolean demoPausedByMenu = false;
+		static cvar_t *demoPause = NULL;
 
-		if (cl.attractloop && (cls.key_dest == key_menu))
+		if (demoPause == NULL)
+		{
+			demoPause = Cvar_Get("vr_demo_pause", "1", CVAR_ARCHIVE);
+		}
+
+		if (cl.attractloop && (cls.key_dest == key_menu) && demoPause->value)
 		{
 			if (!demoPausedByMenu)
 			{

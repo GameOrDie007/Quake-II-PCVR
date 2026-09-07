@@ -1143,6 +1143,7 @@ static menuslider_s s_pcoptions_hud_slider;
 static menulist_s s_pcoptions_mirror_box;
 static menulist_s s_pcoptions_tune_box;
 static menulist_s s_pcoptions_inworld_box;
+static menulist_s s_pcoptions_demopause_box;
 
 /*
  * "follows gaze" draws the menu into the eye buffers, so it is welded to the
@@ -1155,6 +1156,18 @@ static const char *pc_inworld_names[] =
     "no",
     "yes, follows gaze",
     "yes, fixed in place",
+    0
+};
+/*
+ * The attract demo behind the first menu. "paused" holds it still while the
+ * page is read; "playing" carries the viewer along its route, which is what
+ * Team Beef's flat panel does. The head and the weapon stick turn the view
+ * either way, so a frozen demo is still something to look around.
+ */
+static const char *pc_demopause_names[] =
+{
+    "playing",
+    "paused",
     0
 };
 static menulist_s s_pcoptions_action;
@@ -1885,6 +1898,12 @@ MenuInWorldFunc(void *unused)
 }
 
 static void
+DemoPauseFunc(void *unused)
+{
+    Cvar_SetValue("vr_demo_pause", (float)s_pcoptions_demopause_box.curvalue);
+}
+
+static void
 PCOptions_MenuInit(void)
 {
     float scale = SCR_GetMenuScale();
@@ -1974,6 +1993,15 @@ PCOptions_MenuInit(void)
         s_pcoptions_inworld_box.curvalue = 0;
     }
 
+    s_pcoptions_demopause_box.generic.type = MTYPE_SPINCONTROL;
+    s_pcoptions_demopause_box.generic.x = 0;
+    s_pcoptions_demopause_box.generic.y = (y += 10);
+    s_pcoptions_demopause_box.generic.name = "demo in menus";
+    s_pcoptions_demopause_box.generic.callback = DemoPauseFunc;
+    s_pcoptions_demopause_box.itemnames = pc_demopause_names;
+    s_pcoptions_demopause_box.curvalue =
+            (Cvar_Get("vr_demo_pause", "1", CVAR_ARCHIVE)->value != 0);
+
     /*
      * r_farsee is CVAR_LATCH, so Cvar_SetValue parks the new setting in
      * latched_string and leaves ->value alone until a restart. Reading ->value
@@ -2036,6 +2064,7 @@ PCOptions_MenuInit(void)
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_mirror_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_tune_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_inworld_box);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_demopause_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note1);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note2);
 }
