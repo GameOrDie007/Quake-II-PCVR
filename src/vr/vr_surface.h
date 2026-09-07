@@ -43,6 +43,9 @@ qboolean TBXR_IsRunning(void);
  * Beef's behaviour the default. Several places have to agree about this, so
  * they all ask here rather than each testing key_dest for themselves. */
 qboolean VR_MenuInWorld(void);
+/* Takes the current head height as the standing height, so a seated player
+   is not permanently crouched. PC Options, and the vr_recentre command. */
+void VR_RecentreHeight(void);
 
 /* The shared half of that test - the feature is on, a session is running, there
  * is a world at ca_active, and no cinematic is playing - without asking what
