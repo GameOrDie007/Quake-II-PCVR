@@ -1177,6 +1177,7 @@ static menuseparator_s s_pcoptions_ssvalue;
    1.1 from 2.0. */
 static char s_pcoptions_ss_text[64];
 static char s_pcoptions_eye_text[64];
+static char s_pcoptions_recentre_text[64];
 
 static void
 CrosshairFunc(void *unused)
@@ -1911,6 +1912,12 @@ static void
 RecentreHeightFunc(void *unused)
 {
     VR_RecentreHeight();
+
+    /* Rewritten here, not only at MenuInit, so the number changes under the
+       cursor rather than on the next visit to the page. */
+    Com_sprintf(s_pcoptions_recentre_text, sizeof(s_pcoptions_recentre_text),
+            "recentre height  (now %+.2fm)",
+            Cvar_Get("vr_height_adjust", "0.0", CVAR_ARCHIVE)->value);
 }
 
 static void
@@ -2031,7 +2038,13 @@ PCOptions_MenuInit(void)
     s_pcoptions_recentre_action.generic.type = MTYPE_ACTION;
     s_pcoptions_recentre_action.generic.x = 0;
     s_pcoptions_recentre_action.generic.y = (y += 10);
-    s_pcoptions_recentre_action.generic.name = "recentre height (sit or stand first)";
+    /* The offset it currently holds, so a press has a visible result. An
+       action that reports nothing cannot be told from one that is not wired
+       up, which is exactly how this read. */
+    Com_sprintf(s_pcoptions_recentre_text, sizeof(s_pcoptions_recentre_text),
+            "recentre height  (now %+.2fm)",
+            Cvar_Get("vr_height_adjust", "0.0", CVAR_ARCHIVE)->value);
+    s_pcoptions_recentre_action.generic.name = s_pcoptions_recentre_text;
     s_pcoptions_recentre_action.generic.callback = RecentreHeightFunc;
 
     s_pcoptions_cheats_action.generic.type = MTYPE_ACTION;
