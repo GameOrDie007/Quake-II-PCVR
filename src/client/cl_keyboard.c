@@ -1189,9 +1189,17 @@ Key_Event(int key, qboolean down, qboolean special)
 	}
 
 	/* While in attract loop all keys besides F1 to F12 (to
-	   allow quick load and the like) are treated like escape. */
+	   allow quick load and the like) are treated like escape.
+
+	   The arrow keys are left out here, which upstream does not need to do.
+	   A controller stick produces them, and a stick is how the player turns
+	   to look around the demo - so without this, looking around opens the
+	   menu. Buttons still bring it up, which is the behaviour that is wanted;
+	   only the stick is quiet. */
 	if (cl.attractloop && (cls.key_dest != key_menu) &&
-		!((key >= K_F1) && (key <= K_F12)))
+		!((key >= K_F1) && (key <= K_F12)) &&
+		(key != K_UPARROW) && (key != K_DOWNARROW) &&
+		(key != K_LEFTARROW) && (key != K_RIGHTARROW))
 	{
 		key = K_ESCAPE;
 	}
