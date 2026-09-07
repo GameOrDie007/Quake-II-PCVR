@@ -8,6 +8,7 @@ Authors		:	Simon Brown
 *************************************************************************************/
 
 #include "VrInput.h"
+#include "../../client/header/client.h"
 
 //keys.h
 void Key_Event (int key, qboolean down, unsigned time);
@@ -60,7 +61,23 @@ void handleTrackedControllerButton(u_int32_t buttonsNew, u_int32_t buttonsOld, u
 {
     if ((buttonsNew & button) != (buttonsOld & button))
     {
-        Key_Event(key, (buttonsNew & button) != 0, global_time);
+        int down = (buttonsNew & button) != 0;
+
+        /*
+         * The first link in the chain that opens the menu. He reports the menu
+         * button needing two presses here as well as in the Quake port, and the
+         * two share this function - so the same trace goes in both, and
+         * whichever hop is missing from the log is the one dropping the press.
+         *
+         * Logged only for escape, which is pressed a handful of times a
+         * session. Per-frame logging has owned the log file twice on the
+         * sibling port; this cannot.
+         */
+        if (key == K_ESCAPE)
+            Com_DPrintf("VR button: ESCAPE %s (button %u, key_dest %i)\n",
+                    down ? "down" : "up", (unsigned)button, (int)cls.key_dest);
+
+        Key_Event(key, down, global_time);
     }
 }
 

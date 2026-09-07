@@ -749,6 +749,15 @@ M_Main_Key(int key)
 void
 M_Menu_Main_f(void)
 {
+    /*
+     * The third link. It fires once per menu open rather than per frame, so it
+     * is cheap enough to leave in, and it distinguishes the two causes: a first
+     * press that lands here and is turned away, or one that never reaches here
+     * at all - in which case the key is eaten before Key_Event dispatches it.
+     */
+    Com_DPrintf("M_Menu_Main_f: key_dest %i, m_drawfunc %s\n",
+            (int)cls.key_dest, m_drawfunc ? "set" : "null");
+
     M_PushMenu(M_Main_Draw, M_Main_Key);
 }
 

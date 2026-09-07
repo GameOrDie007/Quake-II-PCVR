@@ -1116,6 +1116,25 @@ Key_Event(int key, qboolean down, qboolean special)
 	/* Track if key is down */
 	keydown[key] = down;
 
+	/*
+	 * The second link. Between this, the VR button line and M_Menu_Main_f's
+	 * own, a press that does nothing can be placed at the exact hop that drops
+	 * it. This sits before every early return below, so a press cannot be lost
+	 * in front of it.
+	 *
+	 * key_repeats is printed because the autorepeat guard immediately below is
+	 * the one place here that swallows a press without a trace: a down whose
+	 * matching up never arrived leaves the count at 1, and the next down is
+	 * discarded. That is exactly the shape of "it needed two presses", so the
+	 * line says so rather than leaving the number to be interpreted.
+	 */
+	if (key == K_ESCAPE || key == K_JOY_BACK)
+	{
+		Com_DPrintf("Key_Event ESCAPE: %s, key_repeats %i, key_dest %i%s\n",
+				down ? "down" : "up", key_repeats[key], (int)cls.key_dest,
+				(down && key_repeats[key] >= 1) ? " - WILL BE SWALLOWED by the autorepeat guard" : "");
+	}
+
 	/* Ignore most autorepeats */
 	if (down)
 	{
