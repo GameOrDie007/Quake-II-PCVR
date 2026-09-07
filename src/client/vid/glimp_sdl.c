@@ -54,6 +54,8 @@ int vid_mirrorheight = 0;
  * unlike the eye buffer settings this needs no restart.
  */
 cvar_t *vr_mirror = NULL;
+cvar_t *vr_mirror_eye = NULL;
+cvar_t *vr_mirror_fit = NULL;
 
 static int last_flags = 0;
 static int last_display = 0;
@@ -192,6 +194,12 @@ GLimp_Init(void)
 {
 	vid_displayrefreshrate = Cvar_Get("vid_displayrefreshrate", "-1", CVAR_ARCHIVE);
 	vr_mirror = Cvar_Get("vr_mirror", "2", CVAR_ARCHIVE);
+	/* Right by default: most people are right-eye dominant, and the mirror is
+	   for other people to watch rather than for the player, who is wearing the
+	   headset. An eye buffer is nearly square and a monitor is not, so one has
+	   to give: crop loses the top and bottom, fit keeps it all and adds bars. */
+	vr_mirror_eye = Cvar_Get("vr_mirror_eye", "1", CVAR_ARCHIVE);
+	vr_mirror_fit = Cvar_Get("vr_mirror_fit", "1", CVAR_ARCHIVE);
 
 	if (!SDL_WasInit(SDL_INIT_VIDEO))
 	{
