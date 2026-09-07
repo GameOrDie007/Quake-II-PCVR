@@ -633,6 +633,34 @@ SCR_PlayCinematic(char *arg)
 	OGG_Stop();
 
 	cl.cinematicframe = 0;
+
+	/*
+	 * The attract loop's cinematics are skipped unless asked for.
+	 *
+	 * A cinematic has no world behind it, and the attract loop turns any key
+	 * into escape - so a button pressed during the id logo puts the main menu
+	 * over black, and backing out resumes the film. In a headset that is the
+	 * first thing anyone does.
+	 *
+	 * Done here rather than by rewriting the d1..dN aliases, which was the
+	 * first attempt and broke The Reckoning: those chains differ per game -
+	 * xatrix's demos are xdemo1.dm2, rogue's chain is nine long with two
+	 * different cinematics - so hardcoding baseq2's names loaded nothing at
+	 * all there. This names no file and no alias.
+	 *
+	 * It is exactly the path a cinematic whose file is missing already takes
+	 * a few lines below: tell the server to move on, and let nextserver pick
+	 * the next entry. Only while cl.attractloop, so the story cutscenes
+	 * between units are untouched.
+	 */
+	if (cl.attractloop &&
+		!Cvar_Get("vr_intro_movie", "0", CVAR_ARCHIVE)->value)
+	{
+		SCR_FinishCinematic();
+		cl.cinematictime = 0;
+		return;
+	}
+
 	dot = strstr(arg, ".");
 
 	/* static pcx image */

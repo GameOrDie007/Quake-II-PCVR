@@ -384,27 +384,6 @@ Qcommon_Init(int argc, char **argv)
 	{
 		if (!dedicated->value)
 		{
-			/*
-			 * The id logo is skipped unless asked for.
-			 *
-			 * Their attract loop is logo, demo, logo, demo - d1 and d3 are
-			 * idlog.cin - so it is not only a startup thing and cannot be dodged by
-			 * beginning at d2. A cinematic has no world behind it, and the attract
-			 * loop turns any key into escape, so a button pressed during the movie
-			 * puts the main menu over black and backing out resumes the film.
-			 *
-			 * Redefining the two aliases makes the loop demo, demo, which removes
-			 * that case rather than hiding it: every menu then has a world behind
-			 * it, which is what the menus here are built for. These are commands
-			 * issued after the game's configs have been read - nothing of theirs is
-			 * modified, and vr_intro_movie 1 leaves their loop exactly as it is.
-			 */
-			if (!Cvar_Get("vr_intro_movie", "0", CVAR_ARCHIVE)->value)
-			{
-				Cbuf_AddText("alias d1 \"demomap demo1.dm2 ; set nextserver d2\"\n");
-				Cbuf_AddText("alias d2 \"demomap demo2.dm2 ; set nextserver d1\"\n");
-			}
-
 			// Start demo loop...
 			Cbuf_AddText("d1\n");
 
