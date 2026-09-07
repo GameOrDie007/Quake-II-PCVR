@@ -766,6 +766,38 @@ CL_BeginFrame(int packetdelta, int renderdelta, int timedelta, qboolean packetfr
     }
 #endif
 
+	/*
+	 * The attract demo freezes while a menu is over it, and picks up where it
+	 * left off when the menu is hidden. On a monitor the demo running on
+	 * underneath is fine; in a headset it carries the player along its route
+	 * while they are trying to read something, which is both a comfort problem
+	 * and a reason the menu never sits still.
+	 *
+	 * "paused" is the engine's own pause, and SV_SendClientMessages already
+	 * honours it for demo playback - it simply stops reading the next message.
+	 * The flag means this only ever clears a pause it set itself, so a pause
+	 * the player asked for in a real game is left alone.
+	 */
+	{
+		static qboolean demoPausedByMenu = false;
+
+		if (cl.attractloop && (cls.key_dest == key_menu))
+		{
+			if (!demoPausedByMenu)
+			{
+				Cvar_SetValue("paused", 1);
+				demoPausedByMenu = true;
+				Com_DPrintf("demo: frozen under the menu\n");
+			}
+		}
+		else if (demoPausedByMenu)
+		{
+			Cvar_SetValue("paused", 0);
+			demoPausedByMenu = false;
+			Com_DPrintf("demo: running again\n");
+		}
+	}
+
 	// Update input stuff.
 	if (packetframe || renderframe) {
 		CL_ReadPackets();

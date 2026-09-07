@@ -154,24 +154,16 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
                 Key_Event(K_UPARROW, leftJoyState, global_time);
             }
         }
-        {
-            int leftJoyState = (primaryJoystickNew.x > 0.7f ? 1 : 0);
-            if (leftJoyState != (primaryJoystickOld.x > 0.7f ? 1 : 0)) {
-                Key_Event(K_RIGHTARROW, leftJoyState, global_time);
-            }
-            leftJoyState = (primaryJoystickNew.x < -0.7f ? 1 : 0);
-            if (leftJoyState != (primaryJoystickOld.x < -0.7f ? 1 : 0)) {
-                Key_Event(K_LEFTARROW, leftJoyState, global_time);
-            }
-            leftJoyState = (primaryJoystickNew.y < -0.7f ? 1 : 0);
-            if (leftJoyState != (primaryJoystickOld.y < -0.7f ? 1 : 0)) {
-                Key_Event(K_DOWNARROW, leftJoyState, global_time);
-            }
-            leftJoyState = (primaryJoystickNew.y > 0.7f ? 1 : 0);
-            if (leftJoyState != (primaryJoystickOld.y > 0.7f ? 1 : 0)) {
-                Key_Event(K_UPARROW, leftJoyState, global_time);
-            }
-        }
+        /*
+          * The weapon hand's stick is deliberately NOT wired to the arrow keys.
+          * It turns the view instead - q2xr_DemoTurnInput - so the player can
+          * look around the demo, and around the world behind a menu, without
+          * the same push also driving the cursor. Team Beef wired both sticks
+          * to the cursor because on a flat panel there is nothing else for a
+          * stick to do; here there is.
+          *
+          * The off-hand stick above still moves the cursor, so nothing is lost.
+          */
 
         handleTrackedControllerButton(primaryButtonsNew, primaryButtonsOld, primaryButton1, K_ENTER);
         handleTrackedControllerButton(primaryButtonsNew, primaryButtonsOld, ovrButton_Trigger, K_ENTER);
