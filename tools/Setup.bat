@@ -17,7 +17,9 @@ cd /d "%~dp0"
 rem -ExecutionPolicy Bypass applies to this one run only. It changes no system
 rem setting, and is what lets a downloaded script run without the user having to
 rem alter anything.
-powershell -NoProfile -ExecutionPolicy Bypass -File "tools\setup.ps1" "."
+rem %* is passed through so the download can be skipped:
+rem   Setup.bat -Extras no
+powershell -NoProfile -ExecutionPolicy Bypass -File "tools\setup.ps1" "." %*
 
 if errorlevel 1 goto failed
 echo.

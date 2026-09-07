@@ -139,19 +139,19 @@ void HandleInput_Default( ovrInputStateTrackedRemote *pDominantTrackedRemoteNew,
         {
             int leftJoyState = (secondaryJoystickNew.x > 0.7f ? 1 : 0);
             if (leftJoyState != (secondaryJoystickOld.x > 0.7f ? 1 : 0)) {
-                Key_Event(K_RIGHTARROW, leftJoyState, global_time);
+                Key_Event(K_RIGHTARROW, leftJoyState, true);
             }
             leftJoyState = (secondaryJoystickNew.x < -0.7f ? 1 : 0);
             if (leftJoyState != (secondaryJoystickOld.x < -0.7f ? 1 : 0)) {
-                Key_Event(K_LEFTARROW, leftJoyState, global_time);
+                Key_Event(K_LEFTARROW, leftJoyState, true);
             }
             leftJoyState = (secondaryJoystickNew.y < -0.7f ? 1 : 0);
             if (leftJoyState != (secondaryJoystickOld.y < -0.7f ? 1 : 0)) {
-                Key_Event(K_DOWNARROW, leftJoyState, global_time);
+                Key_Event(K_DOWNARROW, leftJoyState, true);
             }
             leftJoyState = (secondaryJoystickNew.y > 0.7f ? 1 : 0);
             if (leftJoyState != (secondaryJoystickOld.y > 0.7f ? 1 : 0)) {
-                Key_Event(K_UPARROW, leftJoyState, global_time);
+                Key_Event(K_UPARROW, leftJoyState, true);
             }
         }
         /*
