@@ -1828,7 +1828,7 @@ static void
 UpdateSupersamplingText(float value)
 {
     Com_sprintf(s_pcoptions_ss_text, sizeof(s_pcoptions_ss_text),
-            "= %.1fx  (their build: 1.1x)", value);
+            "= %.1fx", value);
 }
 
 static void
