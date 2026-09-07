@@ -262,6 +262,8 @@ void VR_SetHMDTypeFromRuntimeName(const char *runtimeName);
  * update so that no SDL call ever lands in the middle of an eye's render.
  */
 extern cvar_t *vr_mirror;
+extern cvar_t *vr_mirror_eye;
+extern cvar_t *vr_mirror_fit;
 void VID_ApplyMirrorMode(void);
 void VID_GetMirrorSize(int *width, int *height);
 void VID_PresentMirror(void);
@@ -679,6 +681,7 @@ q2xrFramebuffer_Mirror(q2xrFramebuffer *fb)
 	int mirrorWidth = 0;
 	int mirrorHeight = 0;
 	int cropWidth, cropHeight, cropX, cropY;
+	int dstX, dstY, dstWidth, dstHeight;
 
 	VID_GetMirrorSize(&mirrorWidth, &mirrorHeight);
 
@@ -688,12 +691,50 @@ q2xrFramebuffer_Mirror(q2xrFramebuffer *fb)
 	}
 
 	cropWidth = fb->Width;
-	cropHeight = (int)((double)fb->Width * mirrorHeight / mirrorWidth);
+	cropHeight = fb->Height;
+	dstX = 0;
+	dstY = 0;
+	dstWidth = mirrorWidth;
+	dstHeight = mirrorHeight;
 
-	if (cropHeight > fb->Height)
+	if (vr_mirror_fit != NULL && vr_mirror_fit->value != 0)
 	{
-		cropHeight = fb->Height;
-		cropWidth = (int)((double)fb->Height * mirrorWidth / mirrorHeight);
+		/*
+		 * Fit: the whole eye scaled to sit inside the window, so none of the
+		 * view is thrown away. The remainder is bars, cleared below or the
+		 * previous frame stays in them.
+		 */
+		dstHeight = (int)((double)mirrorWidth * fb->Height / fb->Width);
+
+		if (dstHeight > mirrorHeight)
+		{
+			dstHeight = mirrorHeight;
+			dstWidth = (int)((double)mirrorHeight * fb->Width / fb->Height);
+		}
+
+		if (dstWidth < 1)
+		{
+			dstWidth = 1;
+		}
+
+		if (dstHeight < 1)
+		{
+			dstHeight = 1;
+		}
+
+		dstX = (mirrorWidth - dstWidth) / 2;
+		dstY = (mirrorHeight - dstHeight) / 2;
+	}
+	else
+	{
+		/* Crop: the largest window-shaped rectangle out of the middle. */
+		cropHeight = (int)((double)fb->Width * mirrorHeight / mirrorWidth);
+
+		if (cropHeight > fb->Height)
+		{
+			cropHeight = fb->Height;
+			cropWidth = (int)((double)fb->Height * mirrorWidth / mirrorHeight);
+		}
 	}
 
 	if (cropWidth > fb->Width)
@@ -717,8 +758,16 @@ q2xrFramebuffer_Mirror(q2xrFramebuffer *fb)
 	glDisable(GL_FRAMEBUFFER_SRGB);
 	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, fb->FrameBuffers[fb->Index]);
 	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+	if (dstWidth < mirrorWidth || dstHeight < mirrorHeight)
+	{
+		glDisable(GL_SCISSOR_TEST);
+		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+	}
+
 	gl.BlitFramebuffer(cropX, cropY, cropX + cropWidth, cropY + cropHeight,
-			0, 0, mirrorWidth, mirrorHeight,
+			dstX, dstY, dstX + dstWidth, dstY + dstHeight,
 			GL_COLOR_BUFFER_BIT, GL_LINEAR);
 	gl.BindFramebuffer(GL_READ_FRAMEBUFFER, 0);
 	gl.BindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
@@ -1909,10 +1958,24 @@ TBXR_FrameSetup(void)
 		q2xrFramebuffer_Resolve(fb);
 		gl.BindFramebuffer(GL_FRAMEBUFFER, 0);
 
-		/* The left eye is the mirror. */
-		if (eye == 0 && vr_mirror != NULL && vr_mirror->value != 0)
+		/*
+		 * Whichever eye vr_mirror_eye asks for. Screen-layer frames render one
+		 * eye only - eyeCount is 1 there - so asking for the right one would
+		 * mirror nothing at all on the demo, the logo and the flat-panel menus.
+		 * Those fall back to the eye that exists.
+		 */
 		{
-			q2xrFramebuffer_Mirror(fb);
+			int mirrorEye = (vr_mirror_eye != NULL && vr_mirror_eye->value != 0) ? 1 : 0;
+
+			if (mirrorEye >= eyeCount)
+			{
+				mirrorEye = 0;
+			}
+
+			if (eye == mirrorEye && vr_mirror != NULL && vr_mirror->value != 0)
+			{
+				q2xrFramebuffer_Mirror(fb);
+			}
 		}
 
 		q2xrFramebuffer_Release(fb);
