@@ -251,6 +251,27 @@ ports' binaries are already in their test installs, so there is nothing to copy.
    cause it is visible in those lines. **Do not guess at a fix before that
    pair exists**; the application demonstrably draws one image on that path.
 
+## Signed off in the headset, 7 September 2026
+
+He wore both and confirmed them: Quake "everything works and everything is how
+I want it", Quake II "working perfectly too". **That is the parity gate met, and
+nothing has been pushed** - publishing is his call.
+
+Everything in the sections below was found by him on a machine that had never
+run these ports, which is why a clean-machine pass is worth more than any number
+of runs on the development one.
+
+### Still open
+
+- **Quest 2 double vision.** The id logo, opening cutscene and first menu show
+  double on a Quest 2 and are correct on a Quest 3. Commit `4d4e72dd` prints
+  everything the runtime reports for that path, once per entry into the screen
+  layer. **Ask for a log from each headset and subtract them** - a Quest 3 cants
+  its displays and a Quest 2 does not. Do not guess at a fix first: the
+  application demonstrably draws one image there.
+- **Publishing.** No `origin` on the Quake II side yet, only `upstream` yquake2.
+  Draft each release unlisted, check the asset, then publish.
+
 ## Traps in this repo
 
 **A `wait` chain in an exec'd cfg cannot time anything against the attract loop.**
