@@ -391,16 +391,88 @@ Menu_Center(menuframework_s *menu)
 	menu->y = (VID_HEIGHT / scale - height) / 2;
 }
 
+/*
+ * How far a page is scrolled, and how much of it fits.
+ *
+ * Item positions are fixed at menu build time, so scrolling is done by moving
+ * the whole page - menu->y - and skipping whatever falls outside the window.
+ * The offset keeps the selected item roughly centred, which is what the
+ * sibling Quake port does, and clamps so the first and last items sit against
+ * their own edges rather than floating.
+ *
+ * Zero unless the page is genuinely taller than the space it has. A page that
+ * fits is drawn exactly as before, which is every page but the long ones.
+ */
+static int
+Menu_ScrollOffset(menuframework_s *menu, int *visibleOut)
+{
+	float scale = SCR_GetMenuScale();
+	menucommon_s *item;
+	int content, visible, offset;
+
+	if (menu->nitems < 1)
+	{
+		*visibleOut = 0;
+		return 0;
+	}
+
+	/* The last item's baseline, plus a line so it is not flush to the edge. */
+	content = ((menucommon_s *)menu->items[menu->nitems - 1])->y + 10;
+
+	/* What is left below the top of the page, less a line for the status bar. */
+	visible = (int)(VID_HEIGHT / scale) - menu->y - 10;
+
+	*visibleOut = visible;
+
+	if (visible <= 0 || content <= visible)
+	{
+		return 0;
+	}
+
+	item = Menu_ItemAtCursor(menu);
+	offset = (item ? item->y : 0) - visible / 2;
+
+	if (offset > content - visible)
+	{
+		offset = content - visible;
+	}
+
+	if (offset < 0)
+	{
+		offset = 0;
+	}
+
+	return offset;
+}
+
 void
 Menu_Draw(menuframework_s *menu)
 {
 	int i;
 	menucommon_s *item;
 	float scale = SCR_GetMenuScale();
+	int visible;
+	int offset = Menu_ScrollOffset(menu, &visible);
+	int savedY = menu->y;
+
+	/* Everything below draws relative to menu->y, item draw functions
+	   included, so the whole page moves by moving it. Put back before
+	   returning - the caller's layout must not see this. */
+	menu->y -= offset;
 
 	/* draw contents */
 	for (i = 0; i < menu->nitems; i++)
 	{
+		if (offset != 0)
+		{
+			int iy = ((menucommon_s *)menu->items[i])->y - offset;
+
+			if (iy < 0 || iy > visible)
+			{
+				continue;
+			}
+		}
+
 		switch (((menucommon_s *)menu->items[i])->type)
 		{
 			case MTYPE_FIELD:
@@ -449,6 +521,8 @@ Menu_Draw(menuframework_s *menu)
 					12 + ((int)(Sys_Milliseconds() / 250) & 1), scale);
 		}
 	}
+
+	menu->y = savedY;
 
 	if (item)
 	{
