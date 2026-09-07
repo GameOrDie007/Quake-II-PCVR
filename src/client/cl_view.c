@@ -579,6 +579,15 @@ V_RenderView(float stereo_separation)
 		VectorScale( cl.v_right, stereo_separation, tmp );  
 		VectorAdd( cl.refdef.vieworg, tmp, cl.refdef.vieworg );  
 		  
+		/*
+		 * The same height the running branch applies. Without it a paused view
+		 * sits at the marine's height rather than the player's, so opening a
+		 * menu moved the eye and closing it moved it back - and Recentre
+		 * Height, which is used from a menu, changed nothing anyone could see.
+		 */
+		cl.refdef.vieworg[2] -= (QUAKE_MARINE_HEIGHT * vr_worldscale->value);
+		cl.refdef.vieworg[2] += ((hmdPosition[1] + vr_height_adjust->value) * vr_worldscale->value);
+
 		cl.refdef.vieworg[0] += 1.0/16;  
 		cl.refdef.vieworg[1] += 1.0/16;  
 		cl.refdef.vieworg[2] += 1.0/16;  
