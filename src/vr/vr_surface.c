@@ -217,6 +217,7 @@ static int oldtime = 0;
 static int q2xrFrameLogCount = 0;
 static XrPosef q2xrHeadPoseStage;
 static qboolean q2xrWasUsingScreenLayer = false;
+static qboolean q2xrLogScreenLayer = false;
 static XrPosef q2xrMenuLayerPose;
 static qboolean q2xrWasUsingMenuLayer = false;
 static qboolean q2xrMenuLayerThisFrame = false;
@@ -1277,7 +1278,11 @@ q2xr_InitInstance(void)
 	}
 
 	Q2XR_CHECK_XR(xrGetInstanceProperties(gApp.Instance, &props));
-	Com_Printf("VR: OpenXR runtime is %s\n", props.runtimeName);
+	/* With the version, so two logs from two headsets can be subtracted. */
+	Com_Printf("VR: OpenXR runtime is %s %d.%d.%d\n", props.runtimeName,
+			(int)XR_VERSION_MAJOR(props.runtimeVersion),
+			(int)XR_VERSION_MINOR(props.runtimeVersion),
+			(int)XR_VERSION_PATCH(props.runtimeVersion));
 	VR_SetHMDTypeFromRuntimeName(props.runtimeName);
 
 	systemInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
@@ -1817,6 +1822,17 @@ TBXR_FrameSetup(void)
 		q2xrScreenLayerPose.position.z = q2xrHeadPoseStage.position.z - cosf(radians(yaw)) * screenDistance;
 	}
 
+	/*
+	 * One line per entry into the screen layer, not per frame. The double
+	 * vision on a Quest 2 lives on this path and not on a Quest 3, and nothing
+	 * the application does here differs between them - so the answer is in what
+	 * the runtime reports, and this is that, in full.
+	 */
+	if (screenLayer && !q2xrWasUsingScreenLayer)
+	{
+		q2xrLogScreenLayer = true;
+	}
+
 	q2xrWasUsingScreenLayer = screenLayer;
 
 	/*
@@ -1941,6 +1957,43 @@ TBXR_FrameSetup(void)
 			quadLayer.pose = q2xrScreenLayerPose;
 			quadLayer.size.width = 3.0f;
 			quadLayer.size.height = quadLayer.size.width / screenAspect;
+
+			if (q2xrLogScreenLayer)
+			{
+				int i;
+
+				q2xrLogScreenLayer = false;
+
+				Com_DPrintf("VR screen layer: buffer %dx%d, aspect %.4f, "
+						"quad %.3fx%.3f m at %.3f m\n",
+						fb->Width, fb->Height, screenAspect,
+						quadLayer.size.width, quadLayer.size.height,
+						Cvar_VariableValue("vr_screen_depth"));
+
+				Com_DPrintf("VR screen layer: pose pos %.3f %.3f %.3f  "
+						"quat %.4f %.4f %.4f %.4f\n",
+						quadLayer.pose.position.x, quadLayer.pose.position.y,
+						quadLayer.pose.position.z,
+						quadLayer.pose.orientation.x, quadLayer.pose.orientation.y,
+						quadLayer.pose.orientation.z, quadLayer.pose.orientation.w);
+
+				/*
+				 * Both eyes, all four angles. A Quest 3 cants its displays and
+				 * a Quest 2 does not, so the two eyes' extents disagree on one
+				 * and match on the other - if that is what decides this, it is
+				 * visible right here.
+				 */
+				for (i = 0; i < NUM_EYES; ++i)
+				{
+					Com_DPrintf("VR screen layer: eye %d fov L %.4f R %.4f "
+							"U %.4f D %.4f  pos %.3f %.3f %.3f\n", i,
+							gApp.Views[i].fov.angleLeft, gApp.Views[i].fov.angleRight,
+							gApp.Views[i].fov.angleUp, gApp.Views[i].fov.angleDown,
+							gApp.Views[i].pose.position.x,
+							gApp.Views[i].pose.position.y,
+							gApp.Views[i].pose.position.z);
+				}
+			}
 		}
 	}
 
