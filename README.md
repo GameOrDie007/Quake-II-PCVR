@@ -122,9 +122,12 @@ A release is binaries and a script - about 16MB, with no game data in it.
 
 Setup finds your Quake II install, copies the game, whichever expansions you
 own and the soundtrack out of it, and builds the weapon wheel artwork from
-the same data. Nothing is downloaded, nothing leaves your machine, and there
-is nothing to install first: it runs on the PowerShell that ships with
-Windows.
+the same data. There is nothing to install first: it runs on the PowerShell
+that ships with Windows.
+
+It makes exactly one network request, and only if it needs to - see **Team
+Beef's assets** below. Nothing else is downloaded and nothing about your
+machine is sent anywhere.
 
 `tools/setup.py` and `tools/make-wheel-icons.py` are the same job in Python and
 are what the repository uses to build a release. The two are kept in step by
@@ -139,13 +142,29 @@ The soundtrack comes from the 2023 remaster's `music` folder, which the Steam
 release bundles - retail Quake II played it off the CD and no download has it.
 That is also where Team Beef's music came from; the filenames match exactly.
 
-**Team Beef's own assets are not included and cannot be.** `pak6.pak` is
-147MB of HD world textures, `pak99.pak` the HD viewmodels the weapon offsets
-assume, and `vignette.tga` the comfort mask. Without them the game plays the
-same with retail artwork - the wheel icons are generated from your own paks,
-and the comfort mask is skipped rather than drawn as a missing texture. If
-you have their standalone's data, put those three files in an `extras` folder
-and run Setup again.
+### Team Beef's assets
+
+`pak6.pak` is 147MB of HD world textures, `pak99.pak` the HD viewmodels the
+weapon offsets were tuned against, and `vignette.tga` the comfort mask. They
+are **Team Beef's own work**, they are not in a Quake II install, and none of
+them ships here.
+
+Setup looks for them on your machine first - an `extras` folder beside the game,
+or a copy already installed. If they are still missing it downloads **their
+Android release** from
+[their own release page](https://github.com/DrBeef/Quake2Quest/releases) and
+takes just those three files out of it. About 169MB, once. Nothing is
+redistributed by this project and the download is discarded afterwards.
+
+To skip it entirely:
+
+```
+Setup.bat -Extras no
+```
+
+Without them the game plays the same with retail artwork - the wheel icons are
+generated from your own paks, and the comfort mask is skipped rather than drawn
+as a missing texture. If the download fails, Setup says so and carries on.
 
 The folder is self-contained: config, saves and screenshots are all written
 inside it, so backing it up backs up everything and copying it to another PC

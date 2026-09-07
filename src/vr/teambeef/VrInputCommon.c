@@ -10,8 +10,16 @@ Authors		:	Simon Brown
 #include "VrInput.h"
 #include "../../client/header/client.h"
 
-//keys.h
-void Key_Event (int key, qboolean down, unsigned time);
+/*
+  keys.h. The third parameter was a timestamp in the tree Team Beef forked and
+  is "qboolean special" here, and Key_Event returns early unless it is set - a
+  key reaches the menu, the console or the chat line only when it is true. They
+  pass global_time, which is large and therefore true, so it has always worked
+  by accident. Declared properly and passed as true below, because tidying a
+  stray timestamp into 0 would stop every controller button reaching a menu
+  and say nothing about it.
+*/
+void Key_Event (int key, qboolean down, qboolean special);
 bool quake2_initialised;
 
 long long global_time;
@@ -77,7 +85,7 @@ void handleTrackedControllerButton(u_int32_t buttonsNew, u_int32_t buttonsOld, u
             Com_DPrintf("VR button: ESCAPE %s (button %u, key_dest %i)\n",
                     down ? "down" : "up", (unsigned)button, (int)cls.key_dest);
 
-        Key_Event(key, down, global_time);
+        Key_Event(key, down, true);
     }
 }
 
