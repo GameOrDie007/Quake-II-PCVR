@@ -77,82 +77,56 @@ dark grey and the panel was plainly there.
 
 ## In flight
 
-**Nothing is mid-edit.** The tree is clean; everything below is either awaiting a
-headset or not started.
+**Nothing is mid-edit.** The tree is clean. The port is feature-complete and has
+been proven on a second machine; what is left is publishing.
 
-### No open defects
+### Ready to publish
 
-The X/Y overlay position is fixed in `7049bd3a` - see Done. It is photographed
-at the eye buffer's real size but has not been in a headset.
+The archive is built by `python tools/make-dist.py` and is 6.1 MB. Everything
+below has been confirmed on a machine that is not the development one:
 
-### Awaiting his headset
+- Setup finds Quake II, both expansions, the soundtrack and the cutscenes
+- Team Beef's HD assets are fetched from their own GitHub release, hash-verified
+- The game runs in VR, and the game select page switches between all three
+- Menus and the attract demo stay in the world
 
-- **The X and Y overlays** (`7049bd3a`). Photographed at 3379x3590 before and
-  after: both blocks used to sit entirely below the buffer's centre line and over
-  the status bar, and now straddle it, slightly high. What has *not* been
-  established is whether that angular size is comfortable to read in the headset.
-  If he wants them higher still, the honest lever is `vr_hud_height`'s equivalent
-  for `yv`, which does not exist yet - do not nudge the restored constant.
-- **The Plasma Beam** (`09b26186`). It should lie exactly along the laser sight
-  line; they share an origin and a recoiled aim now, so a divergence is real.
-  Never explicitly confirmed.
-- **The weapon tuner's stick input has never been exercised.** The drawing, the
-  cvar plumbing and `vrweapon save` are all proven at the desk; nothing has ever
-  moved that stick. If it does nothing, `q2xr_WeaponTuneInput` in
-  `src/vr/vr_surface.c` is where to look.
-- **The demo turn stick** (`a505a003`). Same caveat - the anchor is measured, the
-  stick half has never been pressed. `q2xr_DemoTurnInput`.
-- **The menu's own composition layer** (`vr_menu_in_world 2`, `4823d8df`).
-  Everything measurable has been measured; what it *looks* like has not.
-- **The game select page and `relaunchgame` have never run in a headset.**
-  Tearing an OpenXR session down and rebuilding it in a new process is the single
-  riskiest untested thing in the project. Outstanding since 2026-08-28.
+### Left to do before it goes up
 
-**The startup id movie still cannot be skipped by a button**, and the cutscene
-fix will not do it: no server connection, and `SCR_FinishCinematic` works by
-writing `nextserver` into the netchan. Dismissing it still goes through the menu.
+1. **Credit Team Beef for the assets in the README.** Setup now installs their
+   artwork with their written permission. Attribution is expected even when
+   redistribution is allowed, and this points users at their release page.
+2. **Create the repository and push.** There is still no `origin`, only
+   `upstream` yquake2. `gh` is authenticated as GameOrDie007. The Quake port is
+   at github.com/GameOrDie007/Quake-PCVR and this should match it.
+3. **Draft release first**, check the asset and the notes while unlisted, then
+   publish in one command.
 
-### Answered, no work needed
+### Quake 1 PCVR has a defect that is already public
 
-**Sliding down slopes after you stop running is theirs, not ours.**
-`src/common/pmove.c` is **byte-identical to Team Beef's own** - zero diff - and
-`pm_friction` 6 and `pm_stopspeed` 100 are stock Quake II values. Stick movement
-is also assigned every frame, so a centred stick genuinely gives zero and nothing
-is sticking. Changing it would be a deliberate divergence on the PC branch, not a
-bug fix. He was told; he has not asked for it.
-
-### Back burner, by his own call
-
-**Quest 2 only: intro, opening cutscene and first menu are double vision.**
-Quest 3 is fine on the same build. Not investigated. Worth knowing before
-starting: all three are `useScreenLayer()` cases, where the scene is rendered
-**once** onto a quad, so ordinary stereo disagreement should be impossible and
-this is not the defect-A family. `Quest_GetScreenRes` returns `cylinderSize`
-rather than the eye buffer size on that path - the one thing that differs there,
-and the place to look first.
+`QuakeQuestVR/vr_pc.c:114` declares `vr_menu_in_world` with a default of `"0"`,
+exactly as Quake II did. Everybody who has downloaded that release has been
+getting flat menus; it looks correct to the owner only because his own config
+carries `1`. It is the same one-word change plus a build and a new release, in a
+separate repository.
 
 ### Not started
 
 - **Six weapons need tuning by eye**: Ionripper and Phalanx (The Reckoning);
   Disruptor, ETF Rifle, Plasma Beam, Chainfist (Ground Zero). The Prox Launcher
-  does **not** - `v_plaunch` is `v_launch` reskinned (same 208 verts, 384 tris,
-  66 frames, byte-identical vertex data in all 66), so it takes the Grenade
+  does **not** - `v_plaunch` is `v_launch` reskinned, so it takes the Grenade
   Launcher's tuned value. **Team Beef's offsets cannot be derived from geometry**
-  - 7 of their 11 sit at the engine default and the variation is almost all in
-  the left/right term. Do not try to fit a model to them again.
-- **Not published.** No `origin` remote, only `upstream` yquake2. The Quake port
-  shipped to github.com/GameOrDie007/Quake-PCVR on 2026-08-29; this one never
-  did.
-- **The release zip on disk is stale.** `E:\Games\Quake2VR-vr-741-base-0717e03a.zip`
-  predates the ship-audit commit and is missing LICENSE. Rebuild with
-  `tools/make-dist.py` from HEAD before handing anything out.
-- **Smooth turn advances per frame, not per second.** `HandleInput_Default` runs
-  once per VR frame and does `snapTurn -= (10 * stick.x) / vr_snapturn_angle`, so
-  the same Turn Speed setting turns 25% faster at 90Hz than at 72Hz. It is
-  Team Beef's arithmetic and he has tuned 7 to his taste at 90Hz, so it is left
-  alone - but changing the headset refresh rate will change his turn speed, and
-  that is the explanation if he ever reports it. Making it time-based would
-  change the feel at every existing setting.
+  - do not try to fit a model to them again.
+- **`gl_anisotropic` is declared twice with different values** (`0` and `4`).
+  Whichever registers first wins. Setup writes 16 into config.cfg so it does not
+  bite today, but it is an accident waiting for someone to remove that line.
+
+### Back burner, by his own call
+
+**Quest 2 only: intro, opening cutscene and first menu are double vision.**
+Quest 3 is fine on the same build. Not investigated. All three are
+`useScreenLayer()` cases, where the scene is rendered once onto a quad, so
+ordinary stereo disagreement should be impossible. `Quest_GetScreenRes` returns
+`cylinderSize` rather than the eye buffer size on that path - look there first.
 
 ## Traps in this repo
 
@@ -217,28 +191,27 @@ Newest first. `git show <hash>` for the reasoning; each message carries it.
 
 | commit | what |
 |---|---|
-| `ddc8bbe2` | Smooth turn by default; the Options page reads the value the engine turns by |
-| `7049bd3a` | X and Y overlays centred again; their per-frame inventory debug print gone |
-| `a505a003` | Face the right way in the demo, and let the stick look around it |
-| `f87be48a` | The weapon wheel gets the scale the rest of the UI has |
-| `2d4c9ea2` | The snap-turn correction moved the gun to the wrong place |
-| `6081ec0f` | Ask the turning code which mode it is in, not a menu display flag |
-| `4db08e25` | Cutscene skip restored - two earlier fixes had cancelled each other out |
-| `77a80fe5` | The demo is a real world; the head steers it instead of wearing it |
-| `50d70c8f` | The first menu keeps the world behind it |
-| `d72929a5` | HUD scale (`xh` in raw pixels against `scale`); every button works in a movie |
-| `dc8d8759` | OpenXR session destroyed on quit, so the process can be reaped |
-| `c7cf0894` | Any deliberate press skips a cinematic, not just the trigger |
-| `4823d8df` | The menu on a composition layer of its own - `vr_menu_in_world 2` |
-| `6f30b37e` | PAUSED and centerprints sit in the menu's plane, not the HUD's |
-| `becbece0` | A pause menu that fuses, over a world that stays lit |
-| `09b26186` | Plasma Beam from the gun; weapon alignment tuner; pause without leaving VR |
+| `4db2ec24` | Menus and the demo stay in the world by default - it had always shipped off |
+| `a2b94550` | Take each piece of Quake II from wherever it actually is |
+| `1d6798ee` | Do not install Quake 1 as Ground Zero; show why an install was chosen |
+| `4dfd7524` | Pick the most complete Quake II; stop asking about the extras |
+| `2e803b6e` | Fetch Team Beef's assets from their own release, so we host none |
+| `9f91c62e` | Ask Steam where its libraries are, instead of guessing drive letters |
+| `d68d968c` | Setup died on a drive letter this machine has and yours does not |
+| `dadfa76b` | Setup runs on PowerShell, so a release needs nothing installed |
+| `de291964` | Prove the interpreter runs, do not trust "where python" |
+| `d696d6e5` | Pre-release audit: our readme on the front page, honest known issues |
+| `12b8352d`..`becbece0` | The VR work - menus in world, turning, the demo, the tuner |
 | `46e25171` | The release build refuses to ship game data |
 
-**Confirmed in the headset:** the pause menu fuses; 3.5m is the right distance
-("nice and big and easy to read"); the world stays lit; PAUSED sits correctly;
-the menu stays put when fixed and follows the gaze when not; the process leak is
-gone; the first menu's demo is in the world and now opens facing the right way
-with the stick turning it; snap **and** smooth turn are both clean and the
-crosshair and laser sight track them; and the weapon wheel reads at the right
-size. His words on 2026-09-03: "everything works well".
+**Confirmed in the headset:** pause menu fuses at 3.5m over a lit world; PAUSED
+sits correctly; the menu stays put when fixed and follows the gaze when not; snap
+and smooth turn are clean and the crosshair and laser sight track them; the
+weapon wheel reads at the right size; the demo opens facing the right way and the
+stick turns it; the process leak is gone; and all three games load from the
+in-game menu.
+
+**Confirmed on a second machine:** Setup with no Python installed, on a network
+share, with the install split across two Steam folders and 190 other games
+present - finding the game, both expansions, the soundtrack, the cutscenes, and
+fetching Team Beef's assets.
