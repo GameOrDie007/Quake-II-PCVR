@@ -101,13 +101,47 @@ below has been confirmed on a machine that is not the development one:
 3. **Draft release first**, check the asset and the notes while unlisted, then
    publish in one command.
 
-### Quake 1 PCVR has a defect that is already public
+### The two ports ship together
 
-`QuakeQuestVR/vr_pc.c:114` declares `vr_menu_in_world` with a default of `"0"`,
-exactly as Quake II did. Everybody who has downloaded that release has been
-getting flat menus; it looks correct to the owner only because his own config
-carries `1`. It is the same one-word change plus a build and a new release, in a
-separate repository.
+**His instruction, 6 September 2026: do not push Quake 1 until it and Quake II
+are at parity - both fully fixed and ready to release.** Quake 1's full update
+is built, verified and committed on `vr-pc`, and is deliberately not pushed. It
+carries the same PowerShell setup as this port, in-world menus on by default,
+and the `vr_menu_in_world` default fixed. So the remaining work here is what
+gates both releases.
+
+### The menu press that needs two goes - now traced in both ports
+
+He reports this in Quake II as well as Quake 1. Both call Team Beef's
+`handleTrackedControllerButton` with the same `ovrButton_Enter` to `K_ESCAPE`
+mapping, so it is likely one bug, and commit `08adab98` puts the same three-hop
+trace here that the Quake port already had: the controller edge in
+`VrInputCommon.c`, the top of `Key_Event`, and `M_Menu_Main_f`'s own line.
+**Whichever hop is missing from his next log is the one dropping the press.**
+
+The `Key_Event` line prints `key_repeats` and says outright when the autorepeat
+guard is about to swallow the press. That guard is the one place here that eats
+a key without a trace: a down whose matching up never arrived leaves the count
+at 1, and the next down is discarded - exactly the shape of "it needed two
+presses".
+
+A healthy press, measured at the desk:
+
+```
+Key_Event ESCAPE: down, key_repeats 0, key_dest 0
+M_Menu_Main_f: key_dest 0, m_drawfunc null
+Key_Event ESCAPE: up, key_repeats 1, key_dest 3
+```
+
+The traced build is staged at `E:\Games\Quake II VR\yquake2.exe`. Run with
+`developer 1` or the lines will not appear.
+
+**Not fixed, found while reading that path:** `VrInputCommon.c` forward-declares
+`Key_Event` with Team Beef's old signature, whose third parameter was `time` and
+is now `qboolean special`, and passes `global_time` into it. Every VR button
+press therefore arrives flagged special, which skips character insertion in the
+console and menu text fields - so a VR controller cannot type into them.
+Harmless for escape, which returns before that branch.
 
 ### Not started
 
@@ -127,6 +161,26 @@ Quest 3 is fine on the same build. Not investigated. All three are
 `useScreenLayer()` cases, where the scene is rendered once onto a quad, so
 ordinary stereo disagreement should be impossible. `Quest_GetScreenRes` returns
 `cylinderSize` rather than the eye buffer size on that path - look there first.
+
+### A real keypress at the desk, without a headset
+
+`SendKeys` does not reach an SDL window - it fails its own control, the
+`version` command produces no output either, so a result from it means nothing.
+Post the key to the window handle instead and SDL's message loop sees it:
+
+```powershell
+Add-Type -Namespace W -Name N -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+'@
+# WM_KEYDOWN 0x100 / WM_KEYUP 0x101, VK_ESCAPE 0x1B
+[W.N]::PostMessage($p.MainWindowHandle, 0x100, [IntPtr]0x1B, [IntPtr]0x00010001)
+[W.N]::PostMessage($p.MainWindowHandle, 0x101, [IntPtr]0x1B, [IntPtr]0xC0010001)
+```
+
+Launch it with `-portable -datadir "E:\Games\Quake II VR" +set vr_enabled 0
++set developer 1 +set vid_fullscreen 0` and redirect stdout to a file. **Quote
+the datadir** - unquoted, the space splits it and the engine reports
+`-datadir E:\Games\Quake could not be found`.
 
 ## Traps in this repo
 
