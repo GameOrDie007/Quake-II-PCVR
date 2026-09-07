@@ -92,14 +92,20 @@ below has been confirmed on a machine that is not the development one:
 
 ### Left to do before it goes up
 
-1. **Credit Team Beef for the assets in the README.** Setup now installs their
-   artwork with their written permission. Attribution is expected even when
-   redistribution is allowed, and this points users at their release page.
-2. **Create the repository and push.** There is still no `origin`, only
+1. **Create the repository and push.** There is still no `origin`, only
    `upstream` yquake2. `gh` is authenticated as GameOrDie007. The Quake port is
    at github.com/GameOrDie007/Quake-PCVR and this should match it.
-3. **Draft release first**, check the asset and the notes while unlisted, then
+2. **Draft release first**, check the asset and the notes while unlisted, then
    publish in one command.
+3. **Neither port goes up until both are ready** - his instruction, 6 September
+   2026. Quake's full update is built and committed and deliberately unpushed.
+
+The README's asset section is done (commit `4c160bee`): it had claimed nothing
+was downloaded, which stopped being true when Setup started fetching their
+Android release. It now names the three files as Team Beef's, links their
+releases page, and offers `Setup.bat -Extras no` - which needed Setup.bat to
+pass its arguments through, since the opt-out existed in setup.ps1 and could
+not be reached from the file a player runs.
 
 ### The two ports ship together
 
@@ -136,12 +142,14 @@ Key_Event ESCAPE: up, key_repeats 1, key_dest 3
 The traced build is staged at `E:\Games\Quake II VR\yquake2.exe`. Run with
 `developer 1` or the lines will not appear.
 
-**Not fixed, found while reading that path:** `VrInputCommon.c` forward-declares
-`Key_Event` with Team Beef's old signature, whose third parameter was `time` and
-is now `qboolean special`, and passes `global_time` into it. Every VR button
-press therefore arrives flagged special, which skips character insertion in the
-console and menu text fields - so a VR controller cannot type into them.
-Harmless for escape, which returns before that branch.
+**Fixed, and the first reading of it was backwards.** `VrInputCommon.c`
+forward-declared `Key_Event` with Team Beef's old signature, whose third
+parameter was `time` and is `qboolean special` here, and passed `global_time`.
+The guard is `if (!special) return;` - so `special` must be **true** for a key
+to reach the menu, the console or the chat line at all. A large timestamp is
+true, so it has always worked, by accident. It is declared properly and passed
+as `true` now, because tidying a stray timestamp into 0 would stop every
+controller button reaching a menu and say nothing about it.
 
 ### Not started
 
@@ -150,9 +158,13 @@ Harmless for escape, which returns before that branch.
   does **not** - `v_plaunch` is `v_launch` reskinned, so it takes the Grenade
   Launcher's tuned value. **Team Beef's offsets cannot be derived from geometry**
   - do not try to fit a model to them again.
-- **`gl_anisotropic` is declared twice with different values** (`0` and `4`).
-  Whichever registers first wins. Setup writes 16 into config.cfg so it does not
-  bite today, but it is an accident waiting for someone to remove that line.
+- ~~**`gl_anisotropic` is declared twice with different values.**~~ **Checked,
+  and it is not a defect.** Three declarations exist but only one can ever run:
+  `videomenu.c` guards with `if (!gl_anisotropic)` so it registers only if
+  nobody has, GL3's `0` is in a renderer that `GL3_SUPPORT` leaves `OFF` and
+  which is not built or shipped, and GL1's `4` is the single live registration.
+  Only `ref_gl1.dll` and `ref_soft.dll` are in the release. Nothing to fix; the
+  entry stayed here long enough to be worth writing down as closed.
 
 ### Back burner, by his own call
 
@@ -181,6 +193,33 @@ Launch it with `-portable -datadir "E:\Games\Quake II VR" +set vr_enabled 0
 +set developer 1 +set vid_fullscreen 0` and redirect stdout to a file. **Quote
 the datadir** - unquoted, the space splits it and the engine reports
 `-datadir E:\Games\Quake could not be found`.
+
+### Menus, the demo and the cheats page - 6/7 September 2026
+
+All desk-verified by screenshot, none of it worn.
+
+- **The demo freezes under a menu**, `vr_demo_pause` (default 1), on PC Options
+  as "demo in menus: playing / paused". **M_PushMenu already paused it** -
+  it sets `paused` whenever a single player server is running, and a demo
+  playback server is one - so the code that matters is the *playing* arm, which
+  takes that pause back every frame, because each submenu push sets it again.
+  The first attempt at this measured its own log line rather than the
+  behaviour and reported a clean A/B for a change that did nothing.
+- **The weapon-hand stick turns the view and no longer drives the cursor.**
+  Team Beef wired both sticks to the arrow keys; during the attract loop those
+  became escape and opened the menu, which is why looking around kept
+  interrupting the demo. Arrow keys are excluded from the attract-loop
+  conversion now, so buttons open the menu and sticks stay quiet.
+- **PAUSED is off the menu's composition layer**, where it had been put so the
+  two could not sit at different depths. It is drawn once now, and returns
+  early while any menu is up.
+- **The cheats page moved to PC Options** and the main menu is id's five
+  plaques again. There is no way to draw a sixth: that lettering exists only in
+  those five words, has no font, and neither C nor H appears in any of them.
+- **Menu_Draw scrolls a page taller than its space** - insurance, not a fix.
+  The pages do fit: menu scale is `viddef.width / 750`, so a 3993x4243 eye
+  buffer gives about 797 of menu height and PC Options uses about 130. Made to
+  fire in a 640x200 window before being believed.
 
 ## Traps in this repo
 
