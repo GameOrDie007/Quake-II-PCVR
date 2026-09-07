@@ -601,6 +601,49 @@ M_Popup(void)
 
 #define MAIN_ITEMS 6
 
+/*
+ * The cheats entry has no artwork. The page behind it is yquake2's - godmode,
+ * all items, no clip, no target - but id never drew a plaque for it, so
+ * m_main_cheats is not in Quake II's data and never will be. Asking for it
+ * anyway drew nothing, left an invisible entry the cursor could still land on,
+ * and put a "Can't find pic" line in the log every frame the menu was up:
+ * 96% of one session's log, on the one file a player can send you.
+ *
+ * So it is drawn as text. It does not match the chrome of the other five, and
+ * a word that can be read beats a gap that cannot.
+ */
+#define M_MAIN_CHEATS_PIC   "m_main_cheats"
+#define M_MAIN_CHEATS_LABEL "CHEATS"
+
+static qboolean
+M_Main_IsCheats(const char *name)
+{
+    return (name != NULL) && !strcmp(name, M_MAIN_CHEATS_PIC);
+}
+
+/*
+ * Positioned in screen pixels like the plaques beside it, rather than through
+ * M_Print - that centres a 320-wide box of its own, which is a different
+ * origin from the one the main menu lays its items out in.
+ *
+ * Characters 128 and up are the highlighted set, which is how a text item says
+ * "selected" where the others swap in a _sel plaque.
+ */
+static void
+M_Main_DrawCheats(int xoffset, int y, float scale, qboolean selected)
+{
+    const char *p = M_MAIN_CHEATS_LABEL;
+    int cx = (int)(xoffset * scale);
+
+    while (*p)
+    {
+        Draw_CharScaled(cx, (int)(y * scale),
+                selected ? (*p + 128) : *p, scale);
+        cx += (int)(8 * scale);
+        p++;
+    }
+}
+
 static void
 M_Main_Draw(void)
 {
@@ -642,7 +685,16 @@ M_Main_Draw(void)
 
     for (i = 0; names[i] != 0; i++)
     {
-        Draw_GetPicSize(&w, &h, names[i]);
+        if (M_Main_IsCheats(names[i]))
+        {
+            /* Never ask for the pic - that is the log flood. */
+            w = 8 * (int)strlen(M_MAIN_CHEATS_LABEL);
+            h = 8;
+        }
+        else
+        {
+            Draw_GetPicSize(&w, &h, names[i]);
+        }
 
         if (w > widest)
         {
@@ -657,15 +709,33 @@ M_Main_Draw(void)
 
     for (i = 0; names[i] != 0; i++)
     {
-        if (i != m_main_cursor)
+        if (i == m_main_cursor)
+        {
+            continue;
+        }
+
+        if (M_Main_IsCheats(names[i]))
+        {
+            /* +9 to sit the single row of text on the same line the taller
+             * plaques centre on. */
+            M_Main_DrawCheats(xoffset, ystart + i * 40 + 13 + 9, scale, false);
+        }
+        else
         {
             Draw_PicScaled(xoffset * scale, (ystart + i * 40 + 13) * scale, names[i], scale);
         }
     }
 
-    strcpy(litname, names[m_main_cursor]);
-    strcat(litname, "_sel");
-    Draw_PicScaled(xoffset * scale, (ystart + m_main_cursor * 40 + 13) * scale, litname, scale);
+    if (M_Main_IsCheats(names[m_main_cursor]))
+    {
+        M_Main_DrawCheats(xoffset, ystart + m_main_cursor * 40 + 13 + 9, scale, true);
+    }
+    else
+    {
+        strcpy(litname, names[m_main_cursor]);
+        strcat(litname, "_sel");
+        Draw_PicScaled(xoffset * scale, (ystart + m_main_cursor * 40 + 13) * scale, litname, scale);
+    }
 
     M_DrawCursor(xoffset - 25, ystart + m_main_cursor * 40 + 11,
                  (int)(cls.realtime / 100) % NUM_CURSOR_FRAMES);
@@ -2179,7 +2249,14 @@ Cheats_MenuInit(void)
 static void
 Cheats_MenuDraw(void)
 {
-    M_Banner("m_banner_options");
+    /*
+     * A text heading rather than M_Banner("m_banner_options"), which is what
+     * this page used to wear: there is no cheats banner in Quake II's data, so
+     * it borrowed the options one and the page announced itself as OPTIONS.
+     * The same reason the main menu entry is text - see M_Main_DrawCheats.
+     */
+    M_Print(160 - 4 * (int)strlen(M_MAIN_CHEATS_LABEL), 10, M_MAIN_CHEATS_LABEL);
+
     Menu_AdjustCursor(&s_cheats_menu, 1);
     Menu_Draw(&s_cheats_menu);
 }
