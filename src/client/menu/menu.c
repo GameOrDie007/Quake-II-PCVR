@@ -1885,7 +1885,7 @@ PCOptions_MenuInit(void)
     cvar_t *hud = Cvar_Get("vr_hud_height", "0", CVAR_ARCHIVE);
     cvar_t *mirror = Cvar_Get("vr_mirror", "2", CVAR_ARCHIVE);
     cvar_t *tune = Cvar_Get("vr_weapon_tune", "0", 0);
-    cvar_t *inworld = Cvar_Get("vr_menu_in_world", "0", CVAR_ARCHIVE);
+    cvar_t *inworld = Cvar_Get("vr_menu_in_world", "2", CVAR_ARCHIVE);
     int y = 0;
 
     s_pcoptions_menu.x = viddef.width / 2;

@@ -854,7 +854,7 @@ SCR_Init(void)
 	r_menuscale = Cvar_Get("r_menuscale", "-1", CVAR_ARCHIVE);
 	vr_hud_height = Cvar_Get("vr_hud_height", "0", CVAR_ARCHIVE);
 	vr_weapon_tune = Cvar_Get("vr_weapon_tune", "0", 0);
-	vr_menu_in_world = Cvar_Get("vr_menu_in_world", "0", CVAR_ARCHIVE);
+	vr_menu_in_world = Cvar_Get("vr_menu_in_world", "2", CVAR_ARCHIVE);
 
 	/* register our commands */
 	Cmd_AddCommand("timerefresh", SCR_TimeRefresh_f);
