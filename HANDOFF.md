@@ -221,6 +221,36 @@ All desk-verified by screenshot, none of it worn.
   buffer gives about 797 of menu height and PC Options uses about 130. Made to
   fire in a 640x200 window before being believed.
 
+## When testing resumes - read this first
+
+Everything below is built and staged and **none of it has been worn**. Both
+ports' binaries are already in their test installs, so there is nothing to copy.
+
+**Run both with `developer 1`** or none of the traces appear.
+
+1. **The menu button that needed two presses.** Cause found and fixed in the
+   Quake port - a key left stuck down, see its HANDOFF. Quake II never showed a
+   swallowed press; what it had was the menu reopening on its own, fixed by
+   taking the arrow keys out of the attract-loop conversion. Confirm both.
+2. **The demo.** Weapon-hand stick turns the view, buttons open the menu, the
+   demo freezes while a menu is over it and resumes when hidden. PC Options →
+   *demo in menus* switches the freeze off.
+3. **Menus.** PAUSED no longer sits under the main menu. The cheats page is on
+   PC Options, only when cheats are enabled. Main menu is id's five plaques.
+4. **Quest 2 double vision - the one that needs the other headset.** The id
+   logo, the opening cutscene and the first menu show double on a Quest 2 and
+   are correct on a Quest 3. Commit `4d4e72dd` prints everything the runtime
+   reports for that path, once per entry into the screen layer: buffer size and
+   aspect, quad size, distance, pose, and both eyes' four FOV angles and
+   positions, plus the runtime version.
+
+   **What to do:** run on the Quest 2 with `developer 1`, let the id logo play
+   through to the first menu, and keep the log. Then the same on the Quest 3.
+   The two logs subtract. A Quest 3 cants its displays and a Quest 2 does not,
+   so the eyes' extents disagree on one and match on the other - if that is the
+   cause it is visible in those lines. **Do not guess at a fix before that
+   pair exists**; the application demonstrably draws one image on that path.
+
 ## Traps in this repo
 
 **A `wait` chain in an exec'd cfg cannot time anything against the attract loop.**
