@@ -199,7 +199,11 @@ GLimp_Init(void)
 	   headset. An eye buffer is nearly square and a monitor is not, so one has
 	   to give: crop loses the top and bottom, fit keeps it all and adds bars. */
 	vr_mirror_eye = Cvar_Get("vr_mirror_eye", "1", CVAR_ARCHIVE);
-	vr_mirror_fit = Cvar_Get("vr_mirror_fit", "1", CVAR_ARCHIVE);
+	/* Crop by default, tried both ways in a headset: fitting the whole eye into
+	   a 16:9 screen leaves bars down each side wide enough to spoil it for
+	   streaming or for anyone watching, which is what the mirror is for. Fit
+	   is still there for a squarer monitor or a window. */
+	vr_mirror_fit = Cvar_Get("vr_mirror_fit", "0", CVAR_ARCHIVE);
 
 	if (!SDL_WasInit(SDL_INIT_VIDEO))
 	{
