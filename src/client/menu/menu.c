@@ -599,50 +599,29 @@ M_Popup(void)
  * MAIN MENU
  */
 
-#define MAIN_ITEMS 6
+/*
+ * Five, as id drew them. It was 6 for a cheats entry that had no artwork, which
+ * also meant the cursor ran one past QUIT into nothing whenever cheats were off.
+ */
+#define MAIN_ITEMS 5
 
 /*
- * The cheats entry has no artwork. The page behind it is yquake2's - godmode,
- * all items, no clip, no target - but id never drew a plaque for it, so
- * m_main_cheats is not in Quake II's data and never will be. Asking for it
- * anyway drew nothing, left an invisible entry the cursor could still land on,
- * and put a "Can't find pic" line in the log every frame the menu was up:
- * 96% of one session's log, on the one file a player can send you.
+ * The cheats page is reached from PC Options, not from here.
  *
- * So it is drawn as text. It does not match the chrome of the other five, and
- * a word that can be read beats a gap that cannot.
+ * yquake2 puts an entry for it on the main menu, but id never drew a plaque
+ * for one - m_main_cheats is not in Quake II's data and never will be. Asking
+ * for it anyway drew nothing, left an item the cursor could land on and not
+ * see, and put a "Can't find pic" line in the log every frame the menu was up:
+ * 8,029 of one session's 8,376 lines.
+ *
+ * Nor can a sixth plaque be built from the game's own art, which is how
+ * everything else here is made: the lettering exists only in these five words
+ * and has no font, and neither C nor H appears in GAME, MULTIPLAYER, OPTIONS,
+ * VIDEO or QUIT. Two letters would have to be fabricated.
+ *
+ * So the entry lives on PC Options, which is a text list already.
  */
-#define M_MAIN_CHEATS_PIC   "m_main_cheats"
 #define M_MAIN_CHEATS_LABEL "CHEATS"
-
-static qboolean
-M_Main_IsCheats(const char *name)
-{
-    return (name != NULL) && !strcmp(name, M_MAIN_CHEATS_PIC);
-}
-
-/*
- * Positioned in screen pixels like the plaques beside it, rather than through
- * M_Print - that centres a 320-wide box of its own, which is a different
- * origin from the one the main menu lays its items out in.
- *
- * Characters 128 and up are the highlighted set, which is how a text item says
- * "selected" where the others swap in a _sel plaque.
- */
-static void
-M_Main_DrawCheats(int xoffset, int y, float scale, qboolean selected)
-{
-    const char *p = M_MAIN_CHEATS_LABEL;
-    int cx = (int)(xoffset * scale);
-
-    while (*p)
-    {
-        Draw_CharScaled(cx, (int)(y * scale),
-                selected ? (*p + 128) : *p, scale);
-        cx += (int)(8 * scale);
-        p++;
-    }
-}
 
 static void
 M_Main_Draw(void)
@@ -655,10 +634,6 @@ M_Main_Draw(void)
     int totalheight = 0;
     char litname[80];
 	float scale = SCR_GetMenuScale();
-    qboolean cheats_on = (Cvar_Get("cheats", "0", CVAR_ARCHIVE)->value != 0);
-
-    if (!cheats_on && m_main_cursor > 4)
-        m_main_cursor = 4;
 
     char *names[] =
             {
@@ -666,35 +641,13 @@ M_Main_Draw(void)
                     "m_main_multiplayer",
                     "m_main_options",
                     "m_main_video",
-                    NULL,
-                    NULL,
+                    "m_main_quit",
                     NULL
             };
 
-    if (cheats_on)
-    {
-        names[4] = "m_main_cheats";
-        names[5] = "m_main_quit";
-        names[6] = NULL;
-    }
-    else
-    {
-        names[4] = "m_main_quit";
-        names[5] = NULL;
-    }
-
     for (i = 0; names[i] != 0; i++)
     {
-        if (M_Main_IsCheats(names[i]))
-        {
-            /* Never ask for the pic - that is the log flood. */
-            w = 8 * (int)strlen(M_MAIN_CHEATS_LABEL);
-            h = 8;
-        }
-        else
-        {
-            Draw_GetPicSize(&w, &h, names[i]);
-        }
+        Draw_GetPicSize(&w, &h, names[i]);
 
         if (w > widest)
         {
@@ -709,33 +662,15 @@ M_Main_Draw(void)
 
     for (i = 0; names[i] != 0; i++)
     {
-        if (i == m_main_cursor)
-        {
-            continue;
-        }
-
-        if (M_Main_IsCheats(names[i]))
-        {
-            /* +9 to sit the single row of text on the same line the taller
-             * plaques centre on. */
-            M_Main_DrawCheats(xoffset, ystart + i * 40 + 13 + 9, scale, false);
-        }
-        else
+        if (i != m_main_cursor)
         {
             Draw_PicScaled(xoffset * scale, (ystart + i * 40 + 13) * scale, names[i], scale);
         }
     }
 
-    if (M_Main_IsCheats(names[m_main_cursor]))
-    {
-        M_Main_DrawCheats(xoffset, ystart + m_main_cursor * 40 + 13 + 9, scale, true);
-    }
-    else
-    {
-        strcpy(litname, names[m_main_cursor]);
-        strcat(litname, "_sel");
-        Draw_PicScaled(xoffset * scale, (ystart + m_main_cursor * 40 + 13) * scale, litname, scale);
-    }
+    strcpy(litname, names[m_main_cursor]);
+    strcat(litname, "_sel");
+    Draw_PicScaled(xoffset * scale, (ystart + m_main_cursor * 40 + 13) * scale, litname, scale);
 
     M_DrawCursor(xoffset - 25, ystart + m_main_cursor * 40 + 11,
                  (int)(cls.realtime / 100) % NUM_CURSOR_FRAMES);
@@ -775,8 +710,6 @@ M_Main_Key(int key)
     case K_ENTER:
         m_entersound = true;
 
-        qboolean cheats_on = (Cvar_Get("cheats", "0", CVAR_ARCHIVE)->value != 0);
-
         switch (m_main_cursor)
         {
             case 0:
@@ -801,14 +734,7 @@ M_Main_Key(int key)
                 M_Menu_Video_f();
                 break;
             case 4:
-                if (cheats_on)
-                    M_Menu_Cheats_f();
-                else
-                    M_Menu_Quit_f();
-                break;
-            case 5:
-                if (cheats_on)
-                    M_Menu_Quit_f();
+                M_Menu_Quit_f();
                 break;
         }
     }
@@ -1214,6 +1140,7 @@ static menulist_s s_pcoptions_mirror_box;
 static menulist_s s_pcoptions_tune_box;
 static menulist_s s_pcoptions_inworld_box;
 static menulist_s s_pcoptions_demopause_box;
+static menuaction_s s_pcoptions_cheats_action;
 
 /*
  * "follows gaze" draws the menu into the eye buffers, so it is welded to the
@@ -1974,6 +1901,12 @@ DemoPauseFunc(void *unused)
 }
 
 static void
+CheatsMenuFunc(void *unused)
+{
+    M_Menu_Cheats_f();
+}
+
+static void
 PCOptions_MenuInit(void)
 {
     float scale = SCR_GetMenuScale();
@@ -2073,6 +2006,22 @@ PCOptions_MenuInit(void)
             (Cvar_Get("vr_demo_pause", "1", CVAR_ARCHIVE)->value != 0);
 
     /*
+     * yquake2's cheats page - godmode, all weapons and items, no clip, no
+     * target. It normally hangs off the main menu, but id drew no plaque for
+     * it and the lettering it would need does not exist in the game's art, so
+     * it lives here instead, where the whole page is text already.
+     *
+     * Only when cheats are enabled, which is the same condition the main menu
+     * used. MenuInit runs on every open, so turning cheats off in Options and
+     * coming back takes the entry away with it.
+     */
+    s_pcoptions_cheats_action.generic.type = MTYPE_ACTION;
+    s_pcoptions_cheats_action.generic.x = 0;
+    s_pcoptions_cheats_action.generic.y = (y += 10);
+    s_pcoptions_cheats_action.generic.name = "cheats";
+    s_pcoptions_cheats_action.generic.callback = CheatsMenuFunc;
+
+    /*
      * r_farsee is CVAR_LATCH, so Cvar_SetValue parks the new setting in
      * latched_string and leaves ->value alone until a restart. Reading ->value
      * here showed the pre-restart setting, so the option appeared to reset
@@ -2135,6 +2084,12 @@ PCOptions_MenuInit(void)
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_tune_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_inworld_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_demopause_box);
+
+    if (Cvar_Get("cheats", "0", CVAR_ARCHIVE)->value != 0)
+    {
+        Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_cheats_action);
+    }
+
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note1);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_note2);
 }
