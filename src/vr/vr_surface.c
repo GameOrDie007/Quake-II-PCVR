@@ -2237,14 +2237,11 @@ VR_DemoYaw(void)
 static void
 q2xr_DemoTurnInput(ovrInputStateTrackedRemote *domNew)
 {
-	static double lastTime = 0.0;
-	double now = global_time;
-	float dt;
+	float turnRate;
 
 	if (!cl.attractloop || !VR_InWorldEligible())
 	{
 		q2xrDemoAnchor = -1;
-		lastTime = 0.0;
 		return;
 	}
 
@@ -2262,20 +2259,20 @@ q2xr_DemoTurnInput(ovrInputStateTrackedRemote *domNew)
 	{
 		q2xrDemoAnchor = cl.servercount;
 		q2xrDemoYaw = cl.frame.playerstate.viewangles[YAW] - hmdorientation[YAW];
-		lastTime = 0.0;
 	}
 
-	dt = (lastTime > 0.0) ? (float)(now - lastTime) : 0.0f;
-	lastTime = now;
+	/*
+	 * Exactly what HandleInput_Default does for continuous turning in play, so
+	 * the demo turns at the speed the game does. Per frame and therefore
+	 * frame-rate dependent, which is Team Beef's, and matching them is the
+	 * point here.
+	 */
+	turnRate = (vr_snapturn_angle != NULL && vr_snapturn_angle->value >= 1.0f)
+			? vr_snapturn_angle->value : 1.0f;
 
-	if (dt > 0.1f)
+	if (fabsf(domNew->Joystick.x) > (vr_turn_deadzone != NULL ? vr_turn_deadzone->value : 0.2f))
 	{
-		dt = 0.1f;
-	}
-
-	if (fabsf(domNew->Joystick.x) > 0.2f)
-	{
-		q2xrDemoYaw -= domNew->Joystick.x * 90.0f * dt;
+		q2xrDemoYaw -= (10.0f * domNew->Joystick.x) / turnRate;
 
 		while (q2xrDemoYaw > 180.0f)
 		{
