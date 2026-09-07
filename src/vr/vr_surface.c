@@ -218,6 +218,8 @@ static int q2xrFrameLogCount = 0;
 static XrPosef q2xrHeadPoseStage;
 static qboolean q2xrWasUsingScreenLayer = false;
 static qboolean q2xrLogScreenLayer = false;
+/* Defined with the height it captures, far below; registered well above. */
+static void VR_RecentreHeight_f(void);
 static XrPosef q2xrMenuLayerPose;
 static qboolean q2xrWasUsingMenuLayer = false;
 static qboolean q2xrMenuLayerThisFrame = false;
@@ -2509,6 +2511,7 @@ VR_Init(void)
 	vr_weapon_pitchadjust = Cvar_Get("vr_weapon_pitchadjust", "-20.0", CVAR_ARCHIVE);
 	vr_control_scheme = Cvar_Get("vr_control_scheme", "0", CVAR_ARCHIVE);
 	vr_height_adjust = Cvar_Get("vr_height_adjust", "0.0", CVAR_ARCHIVE);
+	Cmd_AddCommand("vr_recentre", VR_RecentreHeight_f);
 	vr_weaponscale = Cvar_Get("vr_weaponscale", "0.56", CVAR_ARCHIVE);
 	vr_weapon_stabilised = Cvar_Get("vr_weapon_stabilised", "0.0", CVAR_LATCH);
 	vr_comfort_mask = Cvar_Get("vr_comfort_mask", "0.0", CVAR_ARCHIVE);
@@ -2644,10 +2647,55 @@ setWorldPosition(float x, float y, float z)
 			worldPosition[2] - oldPosition[2]);
 }
 
+/*
+ * The head height the current level was entered at, and what Recentre Height
+ * puts you back to. Captured once per level rather than continuously, so it is
+ * a reference and not a moving target.
+ */
+static float q2xrStandHeight = 0.0f;
+static int q2xrStandHeightFor = -1;
+
+/*
+ * Take the height being stood - or sat - at now as the standing height.
+ *
+ * Deliberately a capture rather than an offset: chairs and people differ, and
+ * the height in front of us is always right where a guessed number is only
+ * sometimes. It writes vr_height_adjust, which is the cvar their own view maths
+ * already reads in all three places, so nothing else has to change.
+ */
+void
+VR_RecentreHeight(void)
+{
+	float adjust;
+
+	if (q2xrStandHeightFor < 0)
+	{
+		Com_Printf("Recentre height: not in a level yet.\n");
+		return;
+	}
+
+	adjust = q2xrStandHeight - hmdPosition[1];
+	Cvar_SetValue("vr_height_adjust", adjust);
+	Com_Printf("Recentre height: %.2f m, adjust %+.2f m\n", hmdPosition[1], adjust);
+}
+
+static void
+VR_RecentreHeight_f(void)
+{
+	VR_RecentreHeight();
+}
+
 void
 setHMDPosition(float x, float y, float z, float yaw)
 {
 	VectorSet(hmdPosition, -x, y, -z);
+
+	/* One capture per level - cl.servercount changes when a new one starts. */
+	if ((cls.state == ca_active) && (q2xrStandHeightFor != cl.servercount) && (y != 0.0f))
+	{
+		q2xrStandHeightFor = cl.servercount;
+		q2xrStandHeight = y;
+	}
 
 	if (!player_moving)
 	{

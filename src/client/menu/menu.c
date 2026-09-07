@@ -1141,6 +1141,7 @@ static menulist_s s_pcoptions_tune_box;
 static menulist_s s_pcoptions_inworld_box;
 static menulist_s s_pcoptions_demopause_box;
 static menuaction_s s_pcoptions_cheats_action;
+static menuaction_s s_pcoptions_recentre_action;
 
 /*
  * "follows gaze" draws the menu into the eye buffers, so it is welded to the
@@ -1907,6 +1908,12 @@ CheatsMenuFunc(void *unused)
 }
 
 static void
+RecentreHeightFunc(void *unused)
+{
+    VR_RecentreHeight();
+}
+
+static void
 PCOptions_MenuInit(void)
 {
     float scale = SCR_GetMenuScale();
@@ -2015,6 +2022,18 @@ PCOptions_MenuInit(void)
      * used. MenuInit runs on every open, so turning cheats off in Options and
      * coming back takes the entry away with it.
      */
+    /*
+     * Play space is stage space, so sitting down reads as crouching. This takes
+     * the height you are at now as your standing height - right for any chair,
+     * where the Height Adjust slider on the VR options page is a number to
+     * guess at.
+     */
+    s_pcoptions_recentre_action.generic.type = MTYPE_ACTION;
+    s_pcoptions_recentre_action.generic.x = 0;
+    s_pcoptions_recentre_action.generic.y = (y += 10);
+    s_pcoptions_recentre_action.generic.name = "recentre height (sit or stand first)";
+    s_pcoptions_recentre_action.generic.callback = RecentreHeightFunc;
+
     s_pcoptions_cheats_action.generic.type = MTYPE_ACTION;
     s_pcoptions_cheats_action.generic.x = 0;
     s_pcoptions_cheats_action.generic.y = (y += 10);
@@ -2084,6 +2103,7 @@ PCOptions_MenuInit(void)
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_tune_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_inworld_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_demopause_box);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_recentre_action);
 
     if (Cvar_Get("cheats", "0", CVAR_ARCHIVE)->value != 0)
     {
