@@ -207,6 +207,27 @@ function Get-Quake2Score([string]$path) {
     return $score
 }
 
+function Find-Piece([string]$relative, [switch]$Directory) {
+    # The pieces of a Quake II install are not always in one folder. His machine
+    # had a full pak0 under Quake II RTX and the expansions, soundtrack and
+    # cutscenes under Quake 2, with no pak0 there at all - so picking one root
+    # and taking everything from it got the base game and lost the rest.
+    # Each piece is looked for across every root that held anything.
+    if (-not $script:Quake2Roots) { return $null }
+    foreach ($r in $script:Quake2Roots) {
+        $p = PathJoin $r $relative
+        if ($Directory) {
+            if ((Test-Path -PathType Container $p) -and
+                @(Get-ChildItem -LiteralPath $p -File -ErrorAction SilentlyContinue).Count -gt 0) {
+                return $p
+            }
+        } elseif (Test-Path -PathType Leaf $p) {
+            return $p
+        }
+    }
+    return $null
+}
+
 function Find-Quake2([string]$given) {
     if ($given) {
         if (Test-Path -PathType Container $given) { return $given } else { return $null }
@@ -246,14 +267,27 @@ function Find-Quake2([string]$given) {
     $script:Quake2Rejected = New-Object System.Collections.ArrayList
     $script:Quake2Extra = New-Object System.Collections.ArrayList
     $script:Quake2Seen = New-Object System.Collections.ArrayList
+    $script:Quake2Roots = New-Object System.Collections.ArrayList
+    $script:Quake2Skipped = 0
 
     foreach ($c in $cands) {
         $key = $c.ToLower().TrimEnd('\')
         if ($seen.ContainsKey($key)) { continue }
         $seen[$key] = $true
         $sc = Get-Quake2Score $c
-        [void]$script:Quake2Seen.Add([pscustomobject]@{
-            Path = $c; Score = $sc; Why = $script:LastScoreWhy })
+        if ($sc -ge 0) {
+            [void]$script:Quake2Seen.Add([pscustomobject]@{
+                Path = $c; Score = $sc; Why = $script:LastScoreWhy })
+        } else {
+            $script:Quake2Skipped++
+        }
+        # Anything holding a piece of Quake II is worth keeping, because the
+        # pieces are not always in one place.
+        if ($sc -ge 0 -or
+            (Test-Path -PathType Container (PathJoin $c 'rerelease\baseq2\music')) -or
+            (Test-Path -PathType Container (PathJoin $c 'baseq2\video'))) {
+            [void]$script:Quake2Roots.Add($c)
+        }
         if ($sc -lt 0) {
             # No baseq2, but it may still be an expansion on its own.
             $xp = PathJoin $c 'xatrix\pak0.pak'
@@ -261,6 +295,7 @@ function Find-Quake2([string]$given) {
             if (((Test-Path -PathType Leaf $xp) -and (Test-Quake2Pak $xp)) -or
                 ((Test-Path -PathType Leaf $rp) -and (Test-Quake2Pak $rp))) {
                 [void]$script:Quake2Extra.Add($c)
+                if ($script:Quake2Roots -notcontains $c) { [void]$script:Quake2Roots.Add($c) }
             }
             continue
         }
@@ -462,13 +497,12 @@ if (-not $quake2) {
 
 Write-Host ("Quake II found at " + $quake2)
 if ($script:Quake2Seen -and $script:Quake2Seen.Count -gt 1) {
-    # Everything that looked like a Quake II install, with what it scored and
-    # why. Picking the wrong one is otherwise silent until the soundtrack or the
-    # cutscenes turn out to be missing, which is a long way from the cause.
-    Write-Host "  candidates:"
+    # Only the folders that held something. Listing every game on the machine
+    # buried the one line that mattered last time.
+    Write-Host "  other Quake II data found:"
     foreach ($c in ($script:Quake2Seen | Sort-Object -Property Score -Descending)) {
-        Write-Host ("    {0,4}  {1}" -f $c.Score, $c.Path)
-        Write-Host ("          " + $c.Why)
+        if ($c.Path -eq $quake2) { continue }
+        Write-Host ("    {0,4}  {1}  ({2})" -f $c.Score, $c.Path, $c.Why)
     }
 }
 Write-Host ("Installing into  " + $dest)
@@ -488,14 +522,19 @@ foreach ($n in @('pak1.pak', 'pak2.pak', 'maps.lst')) {
     [void](Copy-IfNeeded (PathJoin $baseSrc $n) (PathJoin $baseDst $n) $n)
 }
 foreach ($sub in @('video', 'players')) {
-    [void](Copy-TreeFlat (PathJoin $baseSrc $sub) (PathJoin $baseDst $sub))
+    $src = Find-Piece ('baseq2\' + $sub) -Directory
+    if ($src) {
+        if ($src -notlike ($baseSrc + '*')) { Write-Host ("    " + $sub + " from " + $src) }
+        [void](Copy-TreeFlat $src (PathJoin $baseDst $sub))
+    }
 }
 
 # The soundtrack. Retail Quake II played it off the CD and no download has it;
 # the 2023 remaster ships the same tracks and comes with the Steam release.
-$musicSrc = PathJoin $quake2 'rerelease\baseq2\music'
+$musicSrc = Find-Piece 'rerelease\baseq2\music' -Directory
 $musicDst = PathJoin $baseDst 'music'
-if (Test-Path -PathType Container $musicSrc) {
+if ($musicSrc) {
+    if ($musicSrc -notlike ($quake2 + '*')) { Write-Host ("  soundtrack from " + $musicSrc) }
     [void](Copy-TreeFlat $musicSrc $musicDst)
     $n = (Get-ChildItem $musicDst -File).Count
     Write-Host ("  soundtrack: " + $n + " tracks")
