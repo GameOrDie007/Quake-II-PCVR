@@ -899,6 +899,22 @@ SCR_DrawPause(float separation)
 		return;
 	}
 
+	/*
+	 * Not while a menu is up. M_PushMenu pauses whenever a single player
+	 * server is running - the attract demo behind the first menu is one - so
+	 * PAUSED has always sat in the middle of the screen underneath the main
+	 * menu, two pieces of art competing for the same space and neither of them
+	 * chosen by the player. The menu already says the game is not running.
+	 *
+	 * Only the drawing is skipped. The pause itself is untouched, so a game
+	 * paused from the menu is still paused when the menu closes, and PAUSED
+	 * appears then - which is the moment it is worth reading.
+	 */
+	if (cls.key_dest == key_menu)
+	{
+		return;
+	}
+
 	Draw_GetPicSize(&w, &h, "pause");
 	Draw_PicScaled((viddef.width - w * scale) / 2 + offset_stereo, viddef.height / 2 + 8 * scale, "pause", scale);
 }
@@ -2626,12 +2642,10 @@ void SCR_UpdateForEye (int eye)
 				SCR_DrawDebugGraph();
 			}
 
-			/* PAUSED goes with the menu when the menu has a layer of its own,
-			 * so that the two cannot end up at different depths. */
-			if (!VR_MenuOwnLayer())
-			{
-				SCR_DrawPause(separation);
-			}
+			/* PAUSED never shares the screen with a menu now - see
+			 * SCR_DrawPause - so it no longer needs to follow the menu onto
+			 * its own layer, and this is the only place it is drawn. */
+			SCR_DrawPause(separation);
 
 			SCR_DrawConsole(separation);
 
@@ -2673,7 +2687,6 @@ void
 SCR_DrawMenuLayer(void)
 {
 	scr_menu_layer_pass = true;
-	SCR_DrawPause(0.0f);
 	M_Draw();
 	scr_menu_layer_pass = false;
 }

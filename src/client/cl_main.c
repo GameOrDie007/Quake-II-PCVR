@@ -787,20 +787,24 @@ CL_BeginFrame(int packetdelta, int renderdelta, int timedelta, qboolean packetfr
 			demoPause = Cvar_Get("vr_demo_pause", "1", CVAR_ARCHIVE);
 		}
 
-		if (cl.attractloop && (cls.key_dest == key_menu) && demoPause->value)
+		qboolean menuOverDemo = (cl.attractloop && (cls.key_dest == key_menu));
+
+		if (menuOverDemo != demoPausedByMenu)
 		{
-			if (!demoPausedByMenu)
-			{
-				Cvar_SetValue("paused", 1);
-				demoPausedByMenu = true;
-				Com_DPrintf("demo: frozen under the menu\n");
-			}
+			demoPausedByMenu = menuOverDemo;
+			Com_DPrintf("demo: menu %s, paused %g\n",
+					menuOverDemo ? "opened over the demo" : "hidden",
+					cl_paused->value);
 		}
-		else if (demoPausedByMenu)
+
+		/*
+		 * Asserted every frame rather than on the transition, because each
+		 * submenu push runs M_PushMenu again and sets the pause again.
+		 */
+		if (menuOverDemo && !demoPause->value && cl_paused->value)
 		{
 			Cvar_SetValue("paused", 0);
-			demoPausedByMenu = false;
-			Com_DPrintf("demo: running again\n");
+			Com_DPrintf("demo: pause taken back, playing on\n");
 		}
 	}
 
