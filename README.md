@@ -8,115 +8,11 @@ The goal was reproduction, not reinterpretation. Team Beef designed and tuned
 the VR experience; this moves it to PC hardware and changes as little else as
 possible.
 
-## Lineage and credit
-
-- **Quake II** — id Software, GPLv2.
-- **[Yamagi Quake II](https://github.com/yquake2/yquake2)** — the engine this
-  is built on. Specifically **7.41**, because that is the exact version
-  Quake2Quest forked.
-- **[Quake2Quest](https://github.com/DrBeef/Quake2Quest)** — Team Beef's VR
-  fork. The VR design, the input model, the weapon handling and the tuned
-  values are all theirs.
-
-This port is GPLv2, as everything above it is. Every file added here is under
-the same licence, and the complete corresponding source is this repository.
-
-Yamagi Quake II's own README, which documents the engine rather than this port,
-is kept as [README-yquake2.md](README-yquake2.md). Building is in
-[BUILD-WINDOWS.md](BUILD-WINDOWS.md).
-
-## How faithful is it?
-
-Measured rather than asserted:
-
-- Team Beef's engine changeset applies **verbatim** — 62 files, 6,936 lines,
-  zero rejected hunks. Building on 7.41 rather than current upstream is what
-  makes that possible.
-- Their VR layer is **byte-identical** apart from include paths.
-  `VrInputCommon.c`, `mathlib.c`, `matrixlib.c`, `VrInput.h` and `VrCvars.h`
-  differ by zero lines. `VrInputDefault.c` carries one documented correction.
-- Their cvar set matches exactly — diffing their shipped `config.cfg` against
-  this build shows no VR option missing.
-
-Two builds are tagged:
-
-| tag | what it is |
-|---|---|
-| `quake2-vr-1to1-r2` | their game on PC, nothing added |
-| `quake2-vr-pc` | the above plus a PC Options screen |
-
-The PC options default to Team Beef's values, so an untouched install of
-either renders identically.
-
-What the PC branch adds on top:
-
-* **The Reckoning and Ground Zero**, playing in VR rather than merely loading.
-* **A game select page** in front of Single Player, listing whichever games
-  are installed.
-* **A PC Options page** - render resolution, antialiasing, extended view
-  distance, HUD height, and what the desktop window does.
-* **A desktop mirror worth streaming** - borderless full screen by default,
-  Alt+Enter to windowed and back, resizable, and cropped to the shape of the
-  window rather than squashed into it.
-
-Every added option defaults to Team Beef's own value where they have one, so an
-untouched install behaves exactly as their game does.
-
-## What changed, and why
-
-Almost every difference is a platform seam rather than a design change. The
-interesting ones:
-
-- **OpenXR replaces their Android layer.** `Q2VR_SurfaceView.c` owns the JNI
-  surface, EGL context and app thread; `src/vr/vr_surface.c` is its PC
-  counterpart, reproducing the same action set, frame structure and pose maths.
-- **The VR layer drives the engine, not the reverse.** Team Beef commented out
-  the `Qcommon_Mainloop` call so the platform renders `Qcommon_Frame` once per
-  eye inside one `xrBeginFrame`/`xrEndFrame` pair. The Windows backend does the
-  same.
-- **Bring-up is split in two.** Instance and view configuration before
-  `Qcommon_Init` (the engine needs the eye resolution while starting), session
-  and swapchains after, once a GL context exists.
-- **Multisampling resolves explicitly.** Theirs uses a GLES extension that
-  resolves implicitly into the swapchain; desktop GL has no equivalent, so the
-  same sample count is reached with a multisample framebuffer and a blit.
-- **`gl1_stereo 8`**, `r_mode -1` and the eye dimensions are set in code. Team
-  Beef pass these on a command line their Android launcher builds — which is
-  invisible in their source and load-bearing: without it the image will not
-  fuse.
-- **Culling uses the headset's field of view.** `R_SetFrustum` culls against
-  the player state's symmetric 90°, while the projection uses OpenXR's wider
-  asymmetric FOV. Harmless at a Quest's per-eye FOV, visible through VDXR as
-  world geometry vanishing at the edge of vision.
-
-Things Android never exercised and so were never wrong for them: no dedicated
-server, no keyboard, and no desktop window to present to.
-
-## Building
-
-Windows, MinGW-w64 via MSYS2. **MSVC will not work** — 7.41 uses C99
-variable-length arrays in 45 places, and editing engine source to avoid them
-defeats the point of the exercise.
-
-```
-pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake \
-          mingw-w64-x86_64-SDL2 mingw-w64-x86_64-openal \
-          mingw-w64-x86_64-openxr-loader
-
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -S . -B build-mingw
-ninja -C build-mingw
-```
-
-`-fcommon` is required and set by the build: GCC 10 changed its default, and
-7.41 relies on the old behaviour.
-
-`tools/package-release.sh <dir>` assembles a self-contained, portable folder.
-
-## Installing
+## Install
 
 A release is binaries and a script - about 16MB, with no game data in it.
 
-1. Extract it anywhere.
+1. Download it and extract it anywhere.
 2. Run **`Setup.bat`** once.
 3. Run **`Play Quake II VR.bat`**.
 
@@ -124,6 +20,11 @@ Setup finds your Quake II install, copies the game, whichever expansions you
 own and the soundtrack out of it, and builds the weapon wheel artwork from
 the same data. There is nothing to install first: it runs on the PowerShell
 that ships with Windows.
+
+**You need** 64-bit Windows, your own copy of Quake II, and a PC VR headset
+with an OpenXR runtime - Virtual Desktop (VDXR), SteamVR and the Oculus
+runtime all expose one. No game data is included here and none ever will be.
+Start your runtime before launching, so it is the one OpenXR picks up.
 
 It makes exactly one network request, and only if it needs to - see **Team
 Beef's assets** below. Nothing else is downloaded and nothing about your
@@ -226,6 +127,63 @@ gameplay lives in KEX game code with monsters and entities this lineage does not
 have. Reaching it would mean giving up the 7.41 base that makes Team Beef's
 changeset apply verbatim.
 
+## Known
+
+- On a Quest 2, the id logo, the opening cutscene and the first menu show double.
+  A Quest 3 is fine on the same build. All three are `useScreenLayer()` cases,
+  where the scene is rendered once onto a quad, so ordinary stereo disagreement
+  should be impossible - it is not the same family as the menu fusing bug, and it
+  is not yet understood.
+- The attract loop's cinematics are skipped, so the startup logo does not play
+  and the demos begin straight away. `vr_intro_movie 1` restores Team Beef's
+  loop untouched. The story cutscenes between units are unaffected either way.
+- Six of the weapons the mission packs add have untuned offsets - see above. The
+  in-game weapon alignment page adjusts them.
+- The standalone renders slightly darker. Engine-side brightness is provably
+  identical — `gammatable` is identity in both, intensity is 3.7 in both, and
+  no lighting cvar differs. The remaining difference is most likely Virtual
+  Desktop's encode/decode path, which is the one part of the comparison that is
+  not the same pipeline.
+- `gl3` is not built. Team Beef's VR work is entirely in `gl1`, and their `gl3`
+  was never made to compile.
+
+## How faithful is it?
+
+Measured rather than asserted:
+
+- Team Beef's engine changeset applies **verbatim** — 62 files, 6,936 lines,
+  zero rejected hunks. Building on 7.41 rather than current upstream is what
+  makes that possible.
+- Their VR layer is **byte-identical** apart from include paths.
+  `VrInputCommon.c`, `mathlib.c`, `matrixlib.c`, `VrInput.h` and `VrCvars.h`
+  differ by zero lines. `VrInputDefault.c` carries one documented correction.
+- Their cvar set matches exactly — diffing their shipped `config.cfg` against
+  this build shows no VR option missing.
+
+Two builds are tagged:
+
+| tag | what it is |
+|---|---|
+| `quake2-vr-1to1-r2` | their game on PC, nothing added |
+| `quake2-vr-pc` | the above plus a PC Options screen |
+
+The PC options default to Team Beef's values, so an untouched install of
+either renders identically.
+
+What the PC branch adds on top:
+
+* **The Reckoning and Ground Zero**, playing in VR rather than merely loading.
+* **A game select page** in front of Single Player, listing whichever games
+  are installed.
+* **A PC Options page** - render resolution, antialiasing, extended view
+  distance, HUD height, and what the desktop window does.
+* **A desktop mirror worth streaming** - borderless full screen by default,
+  Alt+Enter to windowed and back, resizable, and cropped to the shape of the
+  window rather than squashed into it.
+
+Every added option defaults to Team Beef's own value where they have one, so an
+untouched install behaves exactly as their game does.
+
 ## What Team Beef's assets are worth
 
 Setup builds a complete install without them, but they are most of what their
@@ -242,22 +200,69 @@ standalone looks like, and if you have their data it is worth putting in:
 - **`wheel/`** — their weapon wheel art. Setup draws its own from your paks
   where theirs is missing, and prefers theirs wherever it is present.
 
-## Known
+## What changed, and why
 
-- On a Quest 2, the id logo, the opening cutscene and the first menu show double.
-  A Quest 3 is fine on the same build. All three are `useScreenLayer()` cases,
-  where the scene is rendered once onto a quad, so ordinary stereo disagreement
-  should be impossible - it is not the same family as the menu fusing bug, and it
-  is not yet understood.
-- The id logo movie at startup is dismissed with the menu button rather than any
-  button. It plays before there is a server connection, and the skip works by
-  telling the server to move on.
-- Six of the weapons the mission packs add have untuned offsets - see above. The
-  in-game weapon alignment page adjusts them.
-- The standalone renders slightly darker. Engine-side brightness is provably
-  identical — `gammatable` is identity in both, intensity is 3.7 in both, and
-  no lighting cvar differs. The remaining difference is most likely Virtual
-  Desktop's encode/decode path, which is the one part of the comparison that is
-  not the same pipeline.
-- `gl3` is not built. Team Beef's VR work is entirely in `gl1`, and their `gl3`
-  was never made to compile.
+Almost every difference is a platform seam rather than a design change. The
+interesting ones:
+
+- **OpenXR replaces their Android layer.** `Q2VR_SurfaceView.c` owns the JNI
+  surface, EGL context and app thread; `src/vr/vr_surface.c` is its PC
+  counterpart, reproducing the same action set, frame structure and pose maths.
+- **The VR layer drives the engine, not the reverse.** Team Beef commented out
+  the `Qcommon_Mainloop` call so the platform renders `Qcommon_Frame` once per
+  eye inside one `xrBeginFrame`/`xrEndFrame` pair. The Windows backend does the
+  same.
+- **Bring-up is split in two.** Instance and view configuration before
+  `Qcommon_Init` (the engine needs the eye resolution while starting), session
+  and swapchains after, once a GL context exists.
+- **Multisampling resolves explicitly.** Theirs uses a GLES extension that
+  resolves implicitly into the swapchain; desktop GL has no equivalent, so the
+  same sample count is reached with a multisample framebuffer and a blit.
+- **`gl1_stereo 8`**, `r_mode -1` and the eye dimensions are set in code. Team
+  Beef pass these on a command line their Android launcher builds — which is
+  invisible in their source and load-bearing: without it the image will not
+  fuse.
+- **Culling uses the headset's field of view.** `R_SetFrustum` culls against
+  the player state's symmetric 90°, while the projection uses OpenXR's wider
+  asymmetric FOV. Harmless at a Quest's per-eye FOV, visible through VDXR as
+  world geometry vanishing at the edge of vision.
+
+Things Android never exercised and so were never wrong for them: no dedicated
+server, no keyboard, and no desktop window to present to.
+
+## Lineage and credit
+
+- **Quake II** — id Software, GPLv2.
+- **[Yamagi Quake II](https://github.com/yquake2/yquake2)** — the engine this
+  is built on. Specifically **7.41**, because that is the exact version
+  Quake2Quest forked.
+- **[Quake2Quest](https://github.com/DrBeef/Quake2Quest)** — Team Beef's VR
+  fork. The VR design, the input model, the weapon handling and the tuned
+  values are all theirs.
+
+This port is GPLv2, as everything above it is. Every file added here is under
+the same licence, and the complete corresponding source is this repository.
+
+Yamagi Quake II's own README, which documents the engine rather than this port,
+is kept as [README-yquake2.md](README-yquake2.md). Building is in
+[BUILD-WINDOWS.md](BUILD-WINDOWS.md).
+
+## Building
+
+Windows, MinGW-w64 via MSYS2. **MSVC will not work** — 7.41 uses C99
+variable-length arrays in 45 places, and editing engine source to avoid them
+defeats the point of the exercise.
+
+```
+pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake \
+          mingw-w64-x86_64-SDL2 mingw-w64-x86_64-openal \
+          mingw-w64-x86_64-openxr-loader
+
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -S . -B build-mingw
+ninja -C build-mingw
+```
+
+`-fcommon` is required and set by the build: GCC 10 changed its default, and
+7.41 relies on the old behaviour.
+
+`tools/package-release.sh <dir>` assembles a self-contained, portable folder.

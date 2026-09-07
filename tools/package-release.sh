@@ -192,9 +192,9 @@ Known issues
 
 - On a Quest 2, the id logo, the opening cutscene and the first menu show double.
   A Quest 3 is fine on the same build. Not yet understood.
-- The id logo movie at startup is dismissed with the menu button. Any other
-  button skips a cutscene once you are in a level, but not that one - it plays
-  before there is a game running to skip.
+- The startup logo movie is skipped, so the demos begin straight away. Set
+  vr_intro_movie to 1 to get Team Beef's loop back. The story cutscenes between
+  units play either way, and any button skips those.
 - The picture is slightly darker than Team Beef's standalone. Engine brightness
   is provably identical, so the remaining difference is most likely Virtual
   Desktop's own encode and decode. Its colour settings are the place to look.
