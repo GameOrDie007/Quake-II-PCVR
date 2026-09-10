@@ -1,6 +1,6 @@
 # Quake II VR — PCVR
 
-A PC port of [Team Beef](https://www.teambeef.games/)'s **Quake2Quest**, the
+A PC port of [Team Beef](https://www.teambeefvr.com/)'s **Quake2Quest**, the
 Quest standalone VR build of Quake II. Runs on Windows through OpenXR against
 any runtime — Virtual Desktop (VDXR), SteamVR, or the Oculus runtime.
 
