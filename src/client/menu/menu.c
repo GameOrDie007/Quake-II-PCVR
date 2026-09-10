@@ -1141,7 +1141,7 @@ static menulist_s s_pcoptions_tune_box;
 static menulist_s s_pcoptions_inworld_box;
 static menulist_s s_pcoptions_demopause_box;
 static menuaction_s s_pcoptions_cheats_action;
-static menuaction_s s_pcoptions_recentre_action;
+static menuaction_s s_pcoptions_recenter_action;
 
 /*
  * "follows gaze" draws the menu into the eye buffers, so it is welded to the
@@ -1177,7 +1177,7 @@ static menuseparator_s s_pcoptions_ssvalue;
    1.1 from 2.0. */
 static char s_pcoptions_ss_text[64];
 static char s_pcoptions_eye_text[64];
-static char s_pcoptions_recentre_text[64];
+static char s_pcoptions_recenter_text[64];
 
 static void
 CrosshairFunc(void *unused)
@@ -1909,14 +1909,14 @@ CheatsMenuFunc(void *unused)
 }
 
 static void
-RecentreHeightFunc(void *unused)
+RecenterHeightFunc(void *unused)
 {
-    VR_RecentreHeight();
+    VR_RecenterHeight();
 
     /* Rewritten here, not only at MenuInit, so the number changes under the
        cursor rather than on the next visit to the page. */
-    Com_sprintf(s_pcoptions_recentre_text, sizeof(s_pcoptions_recentre_text),
-            "recentre height  (now %+.2fm)",
+    Com_sprintf(s_pcoptions_recenter_text, sizeof(s_pcoptions_recenter_text),
+            "recenter height  (now %+.2fm)",
             Cvar_Get("vr_height_adjust", "0.0", CVAR_ARCHIVE)->value);
 }
 
@@ -2035,17 +2035,17 @@ PCOptions_MenuInit(void)
      * where the Height Adjust slider on the VR options page is a number to
      * guess at.
      */
-    s_pcoptions_recentre_action.generic.type = MTYPE_ACTION;
-    s_pcoptions_recentre_action.generic.x = 0;
-    s_pcoptions_recentre_action.generic.y = (y += 10);
+    s_pcoptions_recenter_action.generic.type = MTYPE_ACTION;
+    s_pcoptions_recenter_action.generic.x = 0;
+    s_pcoptions_recenter_action.generic.y = (y += 10);
     /* The offset it currently holds, so a press has a visible result. An
        action that reports nothing cannot be told from one that is not wired
        up, which is exactly how this read. */
-    Com_sprintf(s_pcoptions_recentre_text, sizeof(s_pcoptions_recentre_text),
-            "recentre height  (now %+.2fm)",
+    Com_sprintf(s_pcoptions_recenter_text, sizeof(s_pcoptions_recenter_text),
+            "recenter height  (now %+.2fm)",
             Cvar_Get("vr_height_adjust", "0.0", CVAR_ARCHIVE)->value);
-    s_pcoptions_recentre_action.generic.name = s_pcoptions_recentre_text;
-    s_pcoptions_recentre_action.generic.callback = RecentreHeightFunc;
+    s_pcoptions_recenter_action.generic.name = s_pcoptions_recenter_text;
+    s_pcoptions_recenter_action.generic.callback = RecenterHeightFunc;
 
     s_pcoptions_cheats_action.generic.type = MTYPE_ACTION;
     s_pcoptions_cheats_action.generic.x = 0;
@@ -2116,7 +2116,7 @@ PCOptions_MenuInit(void)
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_tune_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_inworld_box);
     Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_demopause_box);
-    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_recentre_action);
+    Menu_AddItem(&s_pcoptions_menu, (void *)&s_pcoptions_recenter_action);
 
     if (Cvar_Get("cheats", "0", CVAR_ARCHIVE)->value != 0)
     {
