@@ -11,3 +11,9 @@ build-mingw/
 # Python bytecode from the tools
 __pycache__/
 *.pyc
+
+# Working documents - handoffs, plans, the development log. Ours, not the public repo.
+HANDOFF.md
+PLAN.md
+PROGRESS.md
+TEAMBEEF-DEFAULTS.md
