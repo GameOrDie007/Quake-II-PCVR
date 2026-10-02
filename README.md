@@ -266,3 +266,7 @@ ninja -C build-mingw
 7.41 relies on the old behaviour.
 
 `tools/package-release.sh <dir>` assembles a self-contained, portable folder.
+
+---
+
+**Get an email when the next port ships:** follow [Game Or Die on Patreon](https://www.patreon.com/cw/GameOrDie) for free. Ports are never paywalled.
