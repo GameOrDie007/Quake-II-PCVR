@@ -12,14 +12,21 @@ possible.
 
 A release is binaries and a script: about 16MB, with no game data in it.
 
-1. Download it and extract it anywhere.
-2. Run `Setup.bat` once.
-3. Run `Play Quake II VR.bat`.
+**The easy way:** download **`Quake II PCVR Installer.exe`** from the
+[latest release](https://github.com/GameOrDie007/Quake-II-PCVR/releases/latest) and
+double-click it. If Windows says it protected your PC, click **More info**, then
+**Run anyway**: the installer is not code-signed. Press **INSTALL**. It finds your Quake II, sets everything up and adds a desktop shortcut.
+Start your headset streaming, then press **PRESS START**.
 
-Setup finds your Quake II install, copies the game, whichever expansions you
-own and the soundtrack out of it, and builds the weapon wheel artwork from
-the same data. There is nothing to install first: it runs on the PowerShell
-that ships with Windows.
+**By hand:** download the release zip, unzip it anywhere and double-click
+`Setup.bat`. It finds your Quake II and makes a `VR` folder inside it, with the
+engine and a copy of the game, whichever expansions you own and the soundtrack,
+and builds the weapon wheel artwork from the same data. There is nothing to
+install first: it runs on the PowerShell that ships with Windows. Then run
+`Play Quake II VR.bat` in that `VR` folder.
+
+**Updating from 1.0:** run the installer or the new `Setup.bat`. A folder you
+unzipped by hand is updated where it is, and your saves and settings are kept.
 
 **You need** 64-bit Windows, your own copy of Quake II, and a PC VR headset
 with an OpenXR runtime: Virtual Desktop (VDXR), SteamVR and the Oculus
@@ -35,9 +42,8 @@ are what the repository uses to build a release. The two are kept in step by
 running both and comparing what they produce: every generated file byte for
 byte, and all 80 wheel images pixel by pixel.
 
-If Setup cannot find Quake II, set `Q2VR_QUAKEDIR` to the folder holding
-`baseq2` and run it again, or copy the paks in by hand and run it again to do
-the rest.
+If Setup cannot find Quake II, drag your Quake II folder (the one holding
+`baseq2`) onto `Setup.bat`.
 
 The soundtrack comes from the 2023 remaster's `music` folder, which the Steam
 release bundles: retail Quake II played it off the CD and no download has it.
